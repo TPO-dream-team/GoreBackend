@@ -2,6 +2,7 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace src.Models;
 
@@ -11,6 +12,7 @@ public partial class Post
 
     public Guid CreatedBy { get; set; }
 
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public DateTime Timestamp { get; set; }
 
     public string Tagline { get; set; }

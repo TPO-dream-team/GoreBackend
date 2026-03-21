@@ -109,9 +109,12 @@ public class PostController : ControllerBase
             if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out Guid userId))
                 return Unauthorized("Invalid user identity in token.");
 
-            var mountainExists = _context.Mountains.Any(m => m.Id == request.MountainId);
-            if (!mountainExists)
-                return NotFound("The specified mountain was not found in our database.");
+            if (request.MountainId != null)
+            {
+                var mountainExists = _context.Mountains.Any(m => m.Id == request.MountainId);
+                if (!mountainExists)
+                    return NotFound("The specified mountain was not found in our database.");
+            }
 
             var newPost = new Post
             {
@@ -175,5 +178,5 @@ public class PostController : ControllerBase
     }
 
     public record CreateCommentRequest(string Message);
-    public record CreatePostRequest(string Tagline, string StartMsg, Guid MountainId);
+    public record CreatePostRequest(string Tagline, string StartMsg, Guid? MountainId);
 }
