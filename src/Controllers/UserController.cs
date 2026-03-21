@@ -23,7 +23,6 @@ public class UserController : ControllerBase
         _config = config;
         _context = context;
     }
-    // USERS ---------------------------------------------------------------------------------------------
 
     /// <summary>
     /// Creates a new user.
@@ -289,39 +288,5 @@ public class UserController : ControllerBase
 
     public record LoginUser(string Username, string Password);
     public record ScanRequest(string NFC, double Lon, double Lat);
-    public record RegisterUser(
-    string Username,
-    string Password,
-    string RepeatPassword
-);
-    /*
-    // SCANS ---------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <param name="mountain_NFC"></param>
-    /// <returns></returns>
-    [HttpPost("/scans")]
-    public IActionResult Scans(string mountain_NFC)
-    {
-        return Ok(); 
-    }
-    */
-
-
-
-
-    /*
- 
-GET /users/{id}/scans
-Vrne katere scanne je user z id naredil (id, id_gore, timestamp)
-
-GET /users/{id}/scans/count
-Vrne koliko scannov je naredil user z id 
-
-POST /user/scans/ AUTH
-Prejme v body {user_id: IZ JWT, mountain_NFC: }, pregleda kateri gori pripada
-NFC in zapi�e scan v tabelo SCANS, pod pogojem da uporabnik ni skeniral zadnjih 24h te gore
-     */
+    public record RegisterUser(string Username, string Password, string RepeatPassword);
 }

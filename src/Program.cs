@@ -103,7 +103,6 @@ app.UseCors("AllowEveryone");
 app.UseHttpsRedirection();
 
 
-
 app.UseAuthentication();
 app.UseAuthorization();
 
