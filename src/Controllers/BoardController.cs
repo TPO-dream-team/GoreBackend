@@ -40,6 +40,7 @@ namespace BoardAPI.Controllers
                              u.Username,
                              UserId = u.Id,
                              b.MountainId,
+                             b.Description,
                              b.TourTime,
                              b.Difficulty
                          };
@@ -49,7 +50,6 @@ namespace BoardAPI.Controllers
 
         [HttpPost]
         [Authorize]
-        //TODO check if mountan exists
         public async Task<IActionResult> MakeBoard(BoardDTO request)
         {
             try
@@ -60,6 +60,12 @@ namespace BoardAPI.Controllers
                 {
                     return Unauthorized("User ID not found in token.");
                 }
+                var mountainExists = _context.Mountains.Any(m => m.Id == request.MountainId);
+
+                if (!mountainExists)
+                {
+                    return NotFound("The specified mountain was not found in our database.");
+                };
 
                 Board b = new Board()
                 {
