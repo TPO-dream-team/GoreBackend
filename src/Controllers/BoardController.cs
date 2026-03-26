@@ -116,7 +116,7 @@ namespace BoardAPI.Controllers
                         join p in _context.Users on c.UserId equals p.Id
                         where c.BoardId == id
                         orderby c.Timestamp
-                        select new { c.Id, c.BoardId, c.UserId, p.Username, c.Msg};
+                        select new { c.Id, c.BoardId, c.UserId, p.Username, c.Msg, c.Timestamp};
 
             return Ok(chats.ToList());
         }
