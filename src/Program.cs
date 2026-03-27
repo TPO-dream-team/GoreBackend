@@ -45,6 +45,9 @@ builder.Services.AddOpenApi(options =>
         document.Components ??= new OpenApiComponents();
         document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
 
+        document.Info.Title = "Gore API specification";
+        document.Info.Version = "v1.0";
+
         // Simple Bearer token scheme (paste token here)
         document.Components.SecuritySchemes["Bearer"] = new OpenApiSecurityScheme
         {

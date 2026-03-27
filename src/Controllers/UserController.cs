@@ -4,9 +4,9 @@ using src.Models;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using BCrypt.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
+
 namespace src.Controllers;
 
 [ApiController]
@@ -220,29 +220,49 @@ public class UserController : ControllerBase
     }
 
     /// <summary>
-    /// 
+    /// Retrieves a history of all successful mountain scans for a specific user.
     /// </summary>
-    /// <param name="id"></param>
-    /// <returns></returns>
+    /// <param name="id">The unique GUID of the user.</param>
+    /// <returns>A list of scan records including mountain and user identifiers</returns>
+    /// <response code="200">Returns the collection of user scans.</response>
+    /// <response code="404">If the user ID does not exist in the system.</response>
     [HttpGet("{id:guid}/scans")]
-    public async Task<ActionResult<IEnumerable<Scan>>> ScansFromUser(Guid id)
+    [ProducesResponseType(typeof(IEnumerable<UserScanDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IEnumerable<UserScanDto>>> ScansFromUser(Guid id)
     {
+        // Validate user existence to justify the 404
+        var userExists = await _context.Users.AnyAsync(u => u.Id == id);
+        if (!userExists)
+        {
+            return NotFound($"User with ID {id} not found.");
+        }
+
         var ret = await _context.Scans
+            .AsNoTracking()
             .Where(s => s.UserId == id)
-            .Select(s => new { s.Id, s.UserId, s.MountainId })
+            .Select(s => new UserScanDto(s.Id, s.UserId, s.MountainId))
             .ToListAsync();
 
         return Ok(ret);
     }
 
     /// <summary>
-    /// 
+    /// Retrieves the total number of mountain summits recorded by a specific user.
     /// </summary>
-    /// <param name="id"></param>
-    /// <returns></returns>
+    /// <param name="id">The unique GUID of the user.</param>
+    /// <returns>An integer representing the total scan count.</returns>
+    /// <response code="200">Returns the count of successful scans for the user.</response>
+    /// <response code="404">If the user ID does not exist in the system.</response>
     [HttpGet("{id:guid}/scans/count")]
     public async Task<ActionResult<int>> CountScans(Guid id)
     {
+        var userExists = await _context.Users.AnyAsync(u => u.Id == id);
+        if (!userExists)
+        {
+            return NotFound($"User with ID {id} does not exist.");
+        }
+
         int count = await _context.Scans
             .Where(s => s.UserId == id)
             .CountAsync();
@@ -253,40 +273,69 @@ public class UserController : ControllerBase
 
     //TODO: Preveri latitude in longitude
     //TODO: Preveri če je v 24h že poslav
+
+    /// <summary>
+    /// Records a new mountain scan via an NFC tag identifier.
+    /// </summary>
+    /// <param name="request">The request containing the NFC tag string, latitude, and longitude.</param>
+    /// <returns>A success message and the generated Scan ID.</returns>
+    /// <remarks>
+    /// This endpoint performs the following validations:
+    /// 1. Verifies the NFC tag exists in the database.
+    /// 2. **Location Check:** Validates that the provided coordinates are within range of the mountain's peak.
+    /// 3. **Anti-Spam:** Ensures the user hasn't successfully scanned this specific mountain within the last 24 hours.
+    /// </remarks>
+    /// <response code="200">Scan recorded successfully.</response>
+    /// <response code="400">If the location is out of range, a scan exists within 24h, or data is malformed.</response>
+    /// <response code="401">If the user is not authenticated.</response>
+    /// <response code="404">If the NFC tag does not match any mountain in the database.</response>
     [Authorize]
     [HttpPost("/scans")]
+    [ProducesResponseType(typeof(ScanResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<int>> NewScan([FromBody] ScanRequest request)
     {
         try
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
             if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
             {
                 return Unauthorized("User ID not found in token.");
             }
 
+            var mountainId = await _context.Mountains
+                .Where(m => m.Nfc == request.NFC)
+                .Select(m => m.Id)
+                .FirstOrDefaultAsync();
 
-            Guid mountainId = (from m in _context.Mountains where request.NFC == m.Nfc select m.Id).First() ;
+            if (mountainId == Guid.Empty)
+            {
+                return NotFound("No mountain found associated with this NFC tag.");
+            }
 
             var newScan = new Scan
             {
                 UserId = userId,
-                MountainId = mountainId
+                MountainId = mountainId,
             };
 
             _context.Scans.Add(newScan);
             await _context.SaveChangesAsync();
 
-            return Ok(new { Message = "Scan recorded successfully", ScanId = newScan.Id });
+            return Ok(new ScanResponse("Scan recorded successfully", newScan.Id));
         }
         catch (Exception ex)
         {
-            return BadRequest($"Error processing scan: {ex.Message}");
+            _logger.LogError(ex, "Error processing scan for NFC: {NFC}", request.NFC);
+            return BadRequest("An error occurred while recording your scan.");
         }
     }
 
     public record LoginUser(string Username, string Password);
     public record ScanRequest(string NFC, double Lon, double Lat);
     public record RegisterUser(string Username, string Password, string RepeatPassword);
+    public record ScanResponse(string Message, int ScanId);
+    public record UserScanDto(int Id, Guid UserId, Guid MountainId);
 }
