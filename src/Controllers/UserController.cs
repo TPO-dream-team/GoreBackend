@@ -83,7 +83,7 @@ public class UserController : ControllerBase
     /// <summary>
     /// Creates a new JWT token from old one.
     /// </summary>
-    /// <param name="token">Expired JWT token.</param>
+    /// <param>Expired JWT token.</param>
     /// <response code="200">New token created.</response>
     /// <response code="400">Invalid token.</response>
     /// <response code="401">Token cannot be refreshed.</response>

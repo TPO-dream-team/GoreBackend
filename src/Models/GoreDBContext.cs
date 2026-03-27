@@ -77,6 +77,18 @@ public partial class GoreDBContext : DbContext
             entity.HasOne(d => d.User).WithMany(p => p.BoardChats)
                 .HasForeignKey(d => d.UserId)
                 .HasConstraintName("fk_boardchat_user");
+
+            entity.Property(e => e.IsSpam)
+                .HasColumnName("isspam")
+                .HasDefaultValue(false);
+
+            entity.Property(e => e.IsSpamConfidence)
+                .HasColumnName("isspamconfidence")
+                .HasDefaultValue(1.0);
+
+            entity.Property(e => e.WasVerified)
+                .HasColumnName("wasverified")
+                .HasDefaultValue(false);
         });
 
         modelBuilder.Entity<Mountain>(entity =>
@@ -164,6 +176,18 @@ public partial class GoreDBContext : DbContext
             entity.HasOne(d => d.Post).WithMany(p => p.PostComments)
                 .HasForeignKey(d => d.PostId)
                 .HasConstraintName("fk_comment_post");
+            
+            entity.Property(e => e.IsSpam)
+                .HasColumnName("isspam")
+                .HasDefaultValue(false);
+
+            entity.Property(e => e.IsSpamConfidence)
+                .HasColumnName("isspamconfidence")
+                .HasDefaultValue(1.0);
+
+            entity.Property(e => e.WasVerified)
+                .HasColumnName("wasverified")
+                .HasDefaultValue(false);
         });
 
         modelBuilder.Entity<Scan>(entity =>

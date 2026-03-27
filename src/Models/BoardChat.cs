@@ -18,6 +18,11 @@ public partial class BoardChat
 
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public DateTime Timestamp { get; set; }
+    public bool IsSpam { get; set; }
+
+    public double IsSpamConfidence { get; set; }
+
+    public bool WasVerified { get; set; }
 
     public virtual Board Board { get; set; }
 

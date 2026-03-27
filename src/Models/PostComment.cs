@@ -18,6 +18,11 @@ public partial class PostComment
     public DateTime Timestamp { get; set; }
 
     public string Message { get; set; }
+    public bool IsSpam { get; set; }
+
+    public double IsSpamConfidence { get; set; }
+
+    public bool WasVerified { get; set; }
 
     public virtual User CreatedByNavigation { get; set; }
 
