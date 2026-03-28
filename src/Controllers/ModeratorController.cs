@@ -2,7 +2,7 @@
 using src.Models;
 using System.ComponentModel.DataAnnotations;
 
-namespace BoardAPI.Controllers;
+namespace src.Controllers;
 
 [ApiController]
 [Route("moderator")]

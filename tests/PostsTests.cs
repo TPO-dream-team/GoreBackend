@@ -13,7 +13,7 @@ using System.Linq;
 using System.Security.Claims;
 using Xunit;
 
-namespace src.Tests.Controllers
+namespace tests
 {
     public class PostControllerTests : IDisposable
     {

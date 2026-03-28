@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using src.Models;
 using System.Security.Claims;
 
-namespace BoardAPI.Controllers;
+namespace src.Controllers;
 
 [ApiController]
 [Route("boards")]
