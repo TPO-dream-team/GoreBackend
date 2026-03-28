@@ -30,15 +30,15 @@ jobs:
       continue-on-error: true 
       run: |
         dotnet test --no-build --configuration Release \
-        --logger "github;summary=true" \
+        --logger "trx;LogFileName=test-results.trx" \
         --collect:"XPlat Code Coverage" \
         --results-directory ./TestResults
 
-    - name: Publish Test Report
+    - name: Test Report
       uses: dorny/test-reporter@v1
-      if: always() # Run even if tests fail
+      if: always()
       with:
-        name: .NET Tests
+        name: .NET Test Results
         path: 'TestResults/*.trx'
         reporter: dotnet-trx
 
@@ -51,11 +51,11 @@ jobs:
         format: markdown
         output: both
 
-    - name: Write Coverage to Job Summary
+    - name: Write Summary to Job
       run: cat code-coverage-results.md >> $GITHUB_STEP_SUMMARY
       
-    - name: Check Test Status
+    - name: Final Status Check
       if: steps.test_step.outcome == 'failure'
       run: |
-        echo "::error::Tests failed! Check the 'Annotations' or 'Test Report' section above for details."
+        echo "::error::Tests failed. View the 'Test Results' tab for details."
         exit 1
