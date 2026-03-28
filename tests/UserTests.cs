@@ -274,6 +274,9 @@ namespace tests
             var oldToken = GenerateJwtToken(user);
             SetAuthorizationHeader(oldToken);
 
+            // Počaka 1s da je token zagotovo nov
+            System.Threading.Thread.Sleep(1001);
+
             // Act
             var result = _controller.Refresh();
 
