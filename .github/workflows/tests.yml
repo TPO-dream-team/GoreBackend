@@ -28,25 +28,34 @@ jobs:
     - name: Test with Coverage
       id: test_step
       continue-on-error: true 
-      run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage"
+      run: |
+        dotnet test --no-build --configuration Release \
+        --logger "github;summary=true" \
+        --collect:"XPlat Code Coverage" \
+        --results-directory ./TestResults
+
+    - name: Publish Test Report
+      uses: dorny/test-reporter@v1
+      if: always() # Run even if tests fail
+      with:
+        name: .NET Tests
+        path: 'TestResults/*.trx'
+        reporter: dotnet-trx
 
     - name: Generate Coverage Summary
       uses: irongut/CodeCoverageSummary@v1.3.0
       with:
-        filename: '**/coverage.cobertura.xml'
+        filename: 'TestResults/**/*.cobertura.xml'
         badge: true
         fail_below_min: false 
         format: markdown
         output: both
 
-    - name: Write Summary to Job
+    - name: Write Coverage to Job Summary
       run: cat code-coverage-results.md >> $GITHUB_STEP_SUMMARY
       
     - name: Check Test Status
       if: steps.test_step.outcome == 'failure'
       run: |
-        echo "::error::Tests failed, but I generated the coverage report for you above!"
-        exit 1 
-
-    - name: Write Summary to Job
-      run: cat code-coverage-results.md >> $GITHUB_STEP_SUMMARY
+        echo "::error::Tests failed! Check the 'Annotations' or 'Test Report' section above for details."
+        exit 1
