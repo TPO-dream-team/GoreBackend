@@ -386,5 +386,141 @@ namespace tests
                     It.IsAny<Func<It.IsAnyType, Exception, string>>()),
                 Times.Once);
         }
+
+        [Fact]
+        public void AddComment_WithValidRequest_AddsAndSavesNewComment()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            SetupUser(userId);
+
+            // Create a user
+            var user = new User
+            {
+                Id = userId,
+                Username = "testuser",
+                PasswordHash = "hash",
+                Role = "user"
+            };
+            _context!.Users.Add(user);
+
+            // Create a post
+            var postId = 1;
+            var post = new Post
+            {
+                Id = postId,
+                CreatedBy = userId,
+                Tagline = "Test Post",
+                StartMsg = "Test Message",
+                Timestamp = DateTime.UtcNow
+            };
+            _context.Posts.Add(post);
+            _context.SaveChanges();
+
+            _context.ChangeTracker.Clear();
+
+            var request = new PostController.CreateCommentRequest("This is my awesome comment!");
+
+            // Act
+            var result = _controller.AddComment(postId, request);
+
+            // Assert
+            // Verify the response is Created
+            var createdResult = Assert.IsType<CreatedResult>(result);
+
+            // Verify the comment was added to the database
+            var savedComment = _context.PostComments.FirstOrDefault(c => c.PostId == postId && c.Message == "This is my awesome comment!");
+            Assert.NotNull(savedComment);
+            Assert.Equal(postId, savedComment.PostId);
+            Assert.Equal(userId, savedComment.CreatedBy);
+            Assert.Equal("This is my awesome comment!", savedComment.Message);
+
+            // Verify the comment was actually saved (has an Id)
+            Assert.True(savedComment.Id > 0);
+
+            // Verify only one comment was added
+            Assert.Single(_context.PostComments);
+        }
+
+        [Fact]
+        public void AllComments_WithExistingPostAndComments_ReturnsOrderedComments()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var user = new User
+            {
+                Id = userId,
+                Username = "commenter",
+                PasswordHash = "hash",
+                Role = "user"
+            };
+            _context!.Users.Add(user);
+
+            var postId = 42;
+            var post = new Post
+            {
+                Id = postId,
+                CreatedBy = userId,
+                Tagline = "Test post",
+                StartMsg = "Content",
+                Timestamp = DateTime.UtcNow
+            };
+            _context.Posts.Add(post);
+
+            // Add comments with different timestamps to test ordering
+            var comment1 = new PostComment
+            {
+                Id = 1,
+                PostId = postId,
+                CreatedBy = userId,
+                Message = "First",
+                Timestamp = DateTime.UtcNow.AddHours(-2)
+            };
+            var comment2 = new PostComment
+            {
+                Id = 2,
+                PostId = postId,
+                CreatedBy = userId,
+                Message = "Second",
+                Timestamp = DateTime.UtcNow.AddHours(-1)
+            };
+            var comment3 = new PostComment
+            {
+                Id = 3,
+                PostId = postId,
+                CreatedBy = userId,
+                Message = "Third",
+                Timestamp = DateTime.UtcNow
+            };
+            _context.PostComments.AddRange(comment1, comment2, comment3);
+            _context.SaveChanges();
+
+            // Clear change tracker to avoid navigation property loading issues (not strictly needed)
+            _context.ChangeTracker.Clear();
+
+            // Act
+            var result = _controller.AllComments(postId);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var comments = Assert.IsType<List<PostController.CommentDto>>(okResult.Value);
+            Assert.Equal(3, comments.Count);
+
+            // Verify order (oldest first)
+            Assert.Equal(1, comments[0].Id);
+            Assert.Equal("First", comments[0].Message);
+            Assert.Equal(userId, comments[0].CreatedBy);
+            Assert.Equal("commenter", comments[0].Username);
+
+            Assert.Equal(2, comments[1].Id);
+            Assert.Equal("Second", comments[1].Message);
+            Assert.Equal(userId, comments[1].CreatedBy);
+            Assert.Equal("commenter", comments[1].Username);
+
+            Assert.Equal(3, comments[2].Id);
+            Assert.Equal("Third", comments[2].Message);
+            Assert.Equal(userId, comments[2].CreatedBy);
+            Assert.Equal("commenter", comments[2].Username);
+        }
     }
 }
