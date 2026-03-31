@@ -158,7 +158,7 @@ public class UserController : ControllerBase
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.Username),
-            new Claim(ClaimTypes.Role, "user")
+            new Claim(ClaimTypes.Role, user.Role)
         };
 
         var key = new SymmetricSecurityKey(
