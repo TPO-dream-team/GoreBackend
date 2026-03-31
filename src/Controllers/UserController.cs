@@ -1,11 +1,12 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using src.Models;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Authorization;
+using static src.Controllers.BoardController;
 
 namespace src.Controllers;
 
@@ -241,7 +242,7 @@ public class UserController : ControllerBase
         var ret = await _context.Scans
             .AsNoTracking()
             .Where(s => s.UserId == id)
-            .Select(s => new UserScanDto(s.Id, s.UserId, s.MountainId))
+            .Select(s => new UserScanDto(s.Id, s.UserId, s.MountainId, s.Timestamp))
             .ToListAsync();
 
         return Ok(ret);
@@ -333,9 +334,56 @@ public class UserController : ControllerBase
         }
     }
 
+
+    /// <summary>
+    /// Retrieves all active boards created by a specific user.
+    /// </summary>
+    /// <param name="id">The unique GUID of the user.</param>
+    /// <returns>A list of board records including mountain and user identifiers.</returns>
+    /// <response code="200">Returns the collection of user boards.</response>
+    /// <response code="404">If the user ID does not exist in the system.</response>
+    [HttpGet("{id:guid}/boards")]
+    [ProducesResponseType(typeof(IEnumerable<BoardListDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IEnumerable<BoardListDto>>> BoardsFromUser(Guid id)
+    {
+        var userExists = await _context.Users.AnyAsync(u => u.Id == id);
+        if (!userExists)
+        {
+            return NotFound($"User with ID {id} not found.");
+        }
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        try
+        {
+            var userBoards = await (from b in _context.Boards
+                                    join u in _context.Users on b.UserId equals u.Id
+                                    where u.Id == id && b.ExpiryDate >= today
+                                    orderby b.ExpiryDate
+                                    select new BoardListDto(
+                                        b.Id,
+                                        b.ExpiryDate,
+                                        u.Username,
+                                        u.Id,
+                                        b.MountainId,
+                                        b.Description,
+                                        b.TourTime,
+                                        b.Difficulty
+                                    )).ToListAsync();
+
+            return Ok(userBoards);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving boards for user {UserId}.", id);
+            return StatusCode(500, "Internal server error");
+        }
+    }
+
     public record LoginUser(string Username, string Password);
     public record ScanRequest(string NFC, double Lon, double Lat);
     public record RegisterUser(string Username, string Password, string RepeatPassword);
     public record ScanResponse(string Message, int ScanId);
-    public record UserScanDto(int Id, Guid UserId, Guid MountainId);
+    public record UserScanDto(int Id, Guid UserId, Guid MountainId, DateTime Timestamp);
 }
