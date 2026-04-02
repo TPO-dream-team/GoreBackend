@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using src.Models;
+using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -128,6 +129,7 @@ public class UserController : ControllerBase
 
             var userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var username = principal.FindFirst(ClaimTypes.Name)?.Value;
+            var role = principal.FindFirst(ClaimTypes.Role)?.Value;
 
             if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(username))
             {
@@ -137,7 +139,8 @@ public class UserController : ControllerBase
             var user = new User
             {
                 Id = Guid.Parse(userId),
-                Username = username
+                Username = username,
+                Role = role ?? "user"
             };
 
             var newToken = GenerateJwtToken(user);
