@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gore-api-ingress
+  namespace: backend
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.peakproof.aqtilink.live
+      secretName: gore-api-tls
+  rules:
+    - host: api.peakproof.aqtilink.live
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gorebackend-service
+                port:
+                  number: 80

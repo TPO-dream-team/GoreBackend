@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gorebackend
+  namespace: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gorebackend
+  template:
+    metadata:
+      labels:
+        app: gorebackend
+    spec:
+      containers:
+        - name: gorebackend
+          image: casperjes/peakproof-backend:v1.0.3
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: gorebackend-config
