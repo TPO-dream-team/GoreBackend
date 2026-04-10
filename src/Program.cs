@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.ML;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Scalar.AspNetCore;
+using src.AI;
 using src.Models;
 using System.Text;
 
@@ -15,6 +17,11 @@ builder.Services.AddControllers();
 
 builder.Services.AddDbContext<GoreDBContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
+builder.Services.AddPredictionEnginePool<ModelInput, ModelOutput>()
+    .FromFile(modelName: "ClassifierModel", filePath: "Assets/model.zip", watchForChanges: true); //Brez watch for changes (brez tega se ne bo online posodablov)
+
+builder.Services.AddSingleton<IModelManager, ModelManager>();
 
 var jwtSettings = builder.Configuration.GetSection("Jwt");
 var key = Encoding.UTF8.GetBytes(jwtSettings["Key"]);
