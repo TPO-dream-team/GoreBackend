@@ -52,7 +52,9 @@ public class PostController : ControllerBase
                     p.Tagline,
                     p.CreatedByNavigation.Username,
                     p.Mountain.Name,
-                    p.PostComments.Count
+                    p.PostComments.Count,
+                    p.StartMsg,
+                    p.Timestamp
                 ))
                 .ToList();
 
@@ -61,6 +63,47 @@ public class PostController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error fetching posts");
+            return StatusCode(500, "Internal server error");
+        }
+    }
+
+    /// <summary>
+    /// Retrieves a single post by its ID.
+    /// </summary>
+    /// <param name="id">The unique identifier of the post.</param>
+    /// <returns>Detailed information about the post.</returns>
+    /// <response code="200">Returns the post details.</response>
+    /// <response code="404">If the post is not found.</response>
+    [HttpGet("{id:int}")]
+    [ProducesResponseType(typeof(PostListDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public IActionResult GetPostById(int id)
+    {
+        try
+        {
+            var post = _context.Posts
+                .Where(p => p.Id == id)
+                .Select(p => new PostListDto
+                (
+                    p.Id,
+                    p.Tagline,
+                    p.CreatedByNavigation.Username,
+                    p.Mountain != null ? p.Mountain.Name : null,
+                    p.PostComments.Count,
+                    p.StartMsg,
+                    p.Timestamp
+                ))
+                .FirstOrDefault();
+
+            if (post == null)
+                return NotFound($"Post with ID {id} not found.");
+
+            return Ok(post);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching post {PostId}", id);
             return StatusCode(500, "Internal server error");
         }
     }
@@ -95,7 +138,8 @@ public class PostController : ControllerBase
                     c.Id,
                     c.CreatedBy,
                     c.Message,
-                    c.CreatedByNavigation.Username
+                    c.CreatedByNavigation.Username,
+                    c.Timestamp
                 ))
                 .ToList();
 
@@ -188,7 +232,7 @@ public class PostController : ControllerBase
     /// <response code="404">If the post ID provided does not exist.</response>
     /// <response code="500">If there was a server-side error saving the comment.</response>
     [Authorize]
-    [HttpPost("{id}/comments/new")]
+    [HttpPost("{id}/comments/")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -231,9 +275,9 @@ public class PostController : ControllerBase
     public record CreateCommentRequest(string Message);
     public record CreatePostRequest(string Tagline, string StartMsg, Guid? MountainId);
 
-    public record PostListDto(int Id, string Tagline, string Username, string MountainName, int CommentCount);
+    public record PostListDto(int Id, string Tagline, string Username, string MountainName, int CommentCount, string StartMsg, DateTime TimeStamp);
 
-    public record CommentDto(int Id, Guid CreatedBy, string Message, string Username);
+    public record CommentDto(int Id, Guid CreatedBy, string Message, string Username, DateTime TimeStamp);
 
     public record PostCreationResponse(string Message, int PostId);
 }
