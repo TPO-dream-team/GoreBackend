@@ -30,8 +30,14 @@ public class TestModelController : ControllerBase
     [HttpPost("reset-and-train")]
     public IActionResult ResetModel([FromBody] List<ModelInput> seedData)
     {
-        _modelManager.Refit(seedData);
-        return Ok("Test model reset successfully.");
+        var status = _modelManager.Refit(seedData);
+        return Ok(new { Message = status });
+    }
+    [HttpGet("metrics")]
+    public ActionResult<ModelMetricsSnapshot> GetMetrics()
+    {
+        var metrics = _modelManager.GetMetrics();
+        return Ok(metrics);
     }
 }
 #endif

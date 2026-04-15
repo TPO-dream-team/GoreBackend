@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.ML;
 using Microsoft.ML;
 using Microsoft.ML.Data;
+using System.Text.Json;
 
 namespace src.AI;
 
@@ -28,24 +29,56 @@ public class ModelOutput
     public float ConfidencePercentage { get; set; }
 }
 
+public class MetricsRow
+{
+    [ColumnName("Label")]
+    public bool Label { get; set; }
+
+    [ColumnName("PredictedLabel")]
+    public bool PredictedLabel { get; set; }
+}
+
 public interface IModelManager
 {
     ModelOutput Predict(string input);
-    void Refit(IEnumerable<ModelInput> newData);
-    BinaryClassificationMetrics GetMetrics(IEnumerable<ModelInput> testData);
+    string Refit(IEnumerable<ModelInput> newData);
+    ModelMetricsSnapshot GetMetrics();
+}
+
+public class ModelMetricsSnapshot
+{
+    public int TrainingRun { get; set; }
+    public double Precision { get; set; }
+    public double Recall { get; set; }
+    public double F1Score { get; set; }
+    public DateTime TrainedAtUtc { get; set; }
+    public int TrainingExamples { get; set; }
+    public int TestExamples { get; set; }
 }
 
 public class ModelManager : IModelManager
 {
+    private const int RequiredTotalRows = 100;
+
     private readonly MLContext _mlContext;
     private readonly PredictionEnginePool<ModelInput, ModelOutput> _modelPool;
-    private readonly string _modelPath = "Assets/model.zip";
+    private readonly string _modelPath;
+    private readonly string _metricsPath;
+    private readonly object _sync = new();
+
     private ITransformer _model;
+    private readonly List<ModelInput> _pendingBuffer = new();
 
     public ModelManager(PredictionEnginePool<ModelInput, ModelOutput> modelPool)
     {
         _mlContext = new MLContext(seed: 0);
         _modelPool = modelPool;
+
+        var assetsPath = Path.Combine(AppContext.BaseDirectory, "Assets");
+        Directory.CreateDirectory(assetsPath);
+
+        _modelPath = Path.Combine(assetsPath, "model.zip");
+        _metricsPath = Path.Combine(assetsPath, "model-metrics.json");
 
         if (File.Exists(_modelPath))
             _model = _mlContext.Model.Load(_modelPath, out _);
@@ -64,23 +97,112 @@ public class ModelManager : IModelManager
         return result;
     }
 
-    public void Refit(IEnumerable<ModelInput> newData)
+    public string Refit(IEnumerable<ModelInput> newData)
     {
-        IDataView newDataView = _mlContext.Data.LoadFromEnumerable(newData);
+        if (newData is null)
+        {
+            return "data added to retrain batch 0";
+        }
+
+        var cleanedBatch = newData
+            .Where(x => x is not null && !string.IsNullOrWhiteSpace(x.Message))
+            .ToList();
+
+        if (cleanedBatch.Count == 0)
+        {
+            return $"data added to retrain batch {_pendingBuffer.Count}";
+        }
+
+        lock (_sync)
+        {
+            _pendingBuffer.AddRange(cleanedBatch);
+
+            bool shouldRetrain = _pendingBuffer.Count >= RequiredTotalRows;
+
+            if (!shouldRetrain)
+            {
+                return $"Data added to retrain batch. #data: {_pendingBuffer.Count}";
+            }
+
+            TrainAndSaveModel();
+            _pendingBuffer.Clear();
+            return "Model successfully retrained.";
+        }
+    }
+
+    public ModelMetricsSnapshot GetMetrics()
+    {
+        if (!File.Exists(_metricsPath))
+        {
+            return new ModelMetricsSnapshot();
+        }
+
+        var raw = File.ReadAllText(_metricsPath);
+        return JsonSerializer.Deserialize<ModelMetricsSnapshot>(raw) ?? new ModelMetricsSnapshot();
+    }
+
+    private void TrainAndSaveModel()
+    {
+        var previousMetrics = GetMetrics();
+
+        var allRows = _pendingBuffer
+            .OrderBy(_ => Random.Shared.Next())
+            .ToList();
+
+        var positives = allRows.Where(x => x.IsSpam).OrderBy(_ => Random.Shared.Next()).ToList();
+        var negatives = allRows.Where(x => !x.IsSpam).OrderBy(_ => Random.Shared.Next()).ToList();
+
+        int positiveTestCount = positives.Count > 0
+            ? Math.Clamp((int)Math.Round(positives.Count * 0.1, MidpointRounding.AwayFromZero), 1, positives.Count)
+            : 0;
+
+        int negativeTestCount = negatives.Count > 0
+            ? Math.Clamp((int)Math.Round(negatives.Count * 0.1, MidpointRounding.AwayFromZero), 1, negatives.Count)
+            : 0;
+
+        var testRows = positives.Take(positiveTestCount)
+            .Concat(negatives.Take(negativeTestCount))
+            .OrderBy(_ => Random.Shared.Next())
+            .ToList();
+
+        var trainRows = positives.Skip(positiveTestCount)
+            .Concat(negatives.Skip(negativeTestCount))
+            .OrderBy(_ => Random.Shared.Next())
+            .ToList();
+
+        if (trainRows.Count == 0 || testRows.Count == 0)
+        {
+            return;
+        }
+
+        IDataView trainDataView = _mlContext.Data.LoadFromEnumerable(trainRows);
 
         var pipeline = _mlContext.Transforms.Text.FeaturizeText("Features", nameof(ModelInput.Message))
             .Append(_mlContext.BinaryClassification.Trainers.SdcaLogisticRegression());
 
-        _model = pipeline.Fit(newDataView);
+        _model = pipeline.Fit(trainDataView);
+        _mlContext.Model.Save(_model, trainDataView.Schema, _modelPath);
 
-        _mlContext.Model.Save(_model, newDataView.Schema, _modelPath);
-    }
-
-    public BinaryClassificationMetrics GetMetrics(IEnumerable<ModelInput> testData)
-    {
-        IDataView testDataView = _mlContext.Data.LoadFromEnumerable(testData);
+        IDataView testDataView = _mlContext.Data.LoadFromEnumerable(testRows);
         var predictions = _model.Transform(testDataView);
+        var metrics = _mlContext.BinaryClassification.Evaluate(predictions);
 
-        return _mlContext.BinaryClassification.Evaluate(predictions);
+        var snapshot = new ModelMetricsSnapshot
+        {
+            TrainingRun = previousMetrics.TrainingRun + 1,
+            Precision = metrics.PositivePrecision,
+            Recall = metrics.PositiveRecall,
+            F1Score = metrics.F1Score,
+            TrainedAtUtc = DateTime.UtcNow,
+            TrainingExamples = trainRows.Count,
+            TestExamples = testRows.Count
+        };
+
+        var json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions
+        {
+            WriteIndented = true
+        });
+
+        File.WriteAllText(_metricsPath, json);
     }
 }

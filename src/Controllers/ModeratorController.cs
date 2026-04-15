@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using src.Models;
 using System.ComponentModel.DataAnnotations;
+using src.AI;
 
 namespace src.Controllers;
 
@@ -11,11 +12,13 @@ public class ModeratorController : ControllerBase
     private readonly ILogger<BoardController> _logger;
     private readonly GoreDBContext _context;
     private readonly IConfiguration _config;
+    private readonly IModelManager _modelManager;
 
-    public ModeratorController(ILogger<BoardController> logger, IConfiguration config, GoreDBContext context)
+    public ModeratorController(ILogger<BoardController> logger, IConfiguration config, GoreDBContext context, IModelManager modelManager)
     {
         _logger = logger;
         _config = config;
+        _modelManager = modelManager;
         _context = context;
     }
 
@@ -66,13 +69,7 @@ public class ModeratorController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult GetModelMetrics()
     {
-        // Placeholder for actual calculation logic
-        var metrics = new
-        {
-            Spam = new { Precision = 0.92, Recall = 0.88, F1 = 0.90 },
-            NonSpam = new { Precision = 0.95, Recall = 0.97, F1 = 0.96 },
-            LastUpdated = DateTime.UtcNow
-        };
+        var metrics = _modelManager.GetMetrics();        
 
         return Ok(metrics);
     }
