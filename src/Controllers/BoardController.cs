@@ -90,10 +90,25 @@ public class BoardController : ControllerBase
                 return Unauthorized("User ID not found in token.");
             }
 
+            if (string.IsNullOrWhiteSpace(request.Description) || request.TourTime <= 0 || request.MountainId == Guid.Empty)
+            {
+                return BadRequest(new { message = "Please fill the whole form." });
+            }
+
+            if (request.Difficulty < 1 || request.Difficulty > 5)
+            {
+                return BadRequest(new { message = "Select appropriate difficulty." });
+            }
+
+            if (request.ExpiryDate < DateOnly.FromDateTime(DateTime.Now))
+            {
+                return BadRequest(new { message = "You chose invalid day of the tour." });
+            }
+
             var mountainExists = await _context.Mountains.AnyAsync(m => m.Id == request.MountainId);
             if (!mountainExists)
             {
-                return NotFound("The specified mountain was not found in our database.");
+                return NotFound(new { message = "Select mountain from the list." });
             }
 
             Board b = new Board()
