@@ -104,7 +104,7 @@ public class BoardController : ControllerBase
             {
                 return BadRequest(new { message = "You chose invalid day of the tour." });
             }
-
+            Console.WriteLine($"Looking for Mountain ID: {request.MountainId}");
             var mountainExists = await _context.Mountains.AnyAsync(m => m.Id == request.MountainId);
             if (!mountainExists)
             {
@@ -231,7 +231,7 @@ public class BoardController : ControllerBase
             return Unauthorized();
 
         if (string.IsNullOrWhiteSpace(request.Message))
-            return BadRequest("Message is required.");
+            return BadRequest( new { message = "Write the comment first." });
 
         var chat = new BoardChat
         {
