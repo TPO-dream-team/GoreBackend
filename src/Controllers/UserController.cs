@@ -36,13 +36,13 @@ public class UserController : ControllerBase
     public IActionResult Register([FromBody] RegisterUser reg)
     {
         if (string.IsNullOrWhiteSpace(reg.Username) || string.IsNullOrWhiteSpace(reg.Password) || string.IsNullOrWhiteSpace(reg.RepeatPassword))
-            return BadRequest("All elements required.");
+            return BadRequest(new { message = "Please fill out the whole form." });
 
         if (_context.Users.Any(u => u.Username == reg.Username))
-            return BadRequest("Username already exists.");
+            return BadRequest(new { message = "This username already exists." });
 
         if (reg.Password != reg.RepeatPassword)
-            return BadRequest("Passwords don't match.");
+            return BadRequest(new { message = "Passwords do not match." });
 
         var hash = BCrypt.Net.BCrypt.HashPassword(reg.Password);
 
@@ -70,12 +70,12 @@ public class UserController : ControllerBase
     public IActionResult Login([FromBody] LoginUser log)
     {
         if (string.IsNullOrWhiteSpace(log.Username) || string.IsNullOrWhiteSpace(log.Password))
-            return BadRequest("Username and password required.");
+            return BadRequest(new { message = "Please fill out the whole form." });
 
         var user = _context.Users.SingleOrDefault(u => u.Username == log.Username);
 
         if (user == null || !BCrypt.Net.BCrypt.Verify(log.Password, user.PasswordHash))
-            return Unauthorized("Invalid username or password.");
+            return Unauthorized(new { message = "Invalid username or password." });
 
         var token = GenerateJwtToken(user);
 
