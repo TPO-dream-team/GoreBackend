@@ -18,9 +18,18 @@ builder.Services.AddControllers();
 builder.Services.AddDbContext<GoreDBContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
-builder.Services.AddPredictionEnginePool<ModelInput, ModelOutput>()
-    .FromFile(modelName: "ClassifierModel", filePath: "Assets/model.zip", watchForChanges: true); //Brez watch for changes (brez tega se ne bo online posodablov)
+builder.Services.Configure<ModelStorageOptions>(
+    builder.Configuration.GetSection(ModelStorageOptions.SectionName));
 
+var modelPathConfigured = builder.Configuration[$"{ModelStorageOptions.SectionName}:ModelPath"] ?? "Assets/model.zip";
+var modelPath = Path.IsPathRooted(modelPathConfigured)
+    ? modelPathConfigured
+    : Path.Combine(builder.Environment.ContentRootPath, modelPathConfigured);
+
+builder.Services.AddPredictionEnginePool<ModelInput, ModelOutput>()
+    .FromFile(modelName: "ClassifierModel", filePath: modelPath, watchForChanges: true); //Brez watch for changes (brez tega se ne bo online posodablov)
+
+builder.Services.AddSingleton<IModelMetricsStore, JsonModelMetricsStore>();
 builder.Services.AddSingleton<IModelManager, ModelManager>();
 
 var jwtSettings = builder.Configuration.GetSection("Jwt");

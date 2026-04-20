@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.ML;
 using Microsoft.ML;
 using Microsoft.ML.Data;
-using System.Text.Json;
+using Microsoft.Extensions.Options;
 
 namespace src.AI;
 
@@ -62,23 +62,33 @@ public class ModelManager : IModelManager
 
     private readonly MLContext _mlContext;
     private readonly PredictionEnginePool<ModelInput, ModelOutput> _modelPool;
+    private readonly IModelMetricsStore _metricsStore;
     private readonly string _modelPath;
-    private readonly string _metricsPath;
     private readonly object _sync = new();
 
     private ITransformer _model;
     private readonly List<ModelInput> _pendingBuffer = new();
 
-    public ModelManager(PredictionEnginePool<ModelInput, ModelOutput> modelPool)
+    public ModelManager(
+        PredictionEnginePool<ModelInput, ModelOutput> modelPool,
+        IModelMetricsStore metricsStore,
+        IOptions<ModelStorageOptions> storageOptions,
+        IHostEnvironment hostEnvironment)
     {
         _mlContext = new MLContext(seed: 0);
         _modelPool = modelPool;
+        _metricsStore = metricsStore;
 
-        var assetsPath = Path.Combine(AppContext.BaseDirectory, "Assets");
-        Directory.CreateDirectory(assetsPath);
+        var configuredModelPath = storageOptions.Value.ModelPath;
+        _modelPath = Path.IsPathRooted(configuredModelPath)
+            ? configuredModelPath
+            : Path.Combine(hostEnvironment.ContentRootPath, configuredModelPath);
 
-        _modelPath = Path.Combine(assetsPath, "model.zip");
-        _metricsPath = Path.Combine(assetsPath, "model-metrics.json");
+        var modelDirectory = Path.GetDirectoryName(_modelPath);
+        if (!string.IsNullOrWhiteSpace(modelDirectory))
+        {
+            Directory.CreateDirectory(modelDirectory);
+        }
 
         if (File.Exists(_modelPath))
             _model = _mlContext.Model.Load(_modelPath, out _);
@@ -132,13 +142,7 @@ public class ModelManager : IModelManager
 
     public ModelMetricsSnapshot GetMetrics()
     {
-        if (!File.Exists(_metricsPath))
-        {
-            return new ModelMetricsSnapshot();
-        }
-
-        var raw = File.ReadAllText(_metricsPath);
-        return JsonSerializer.Deserialize<ModelMetricsSnapshot>(raw) ?? new ModelMetricsSnapshot();
+        return _metricsStore.Get();
     }
 
     private void TrainAndSaveModel()
@@ -198,11 +202,6 @@ public class ModelManager : IModelManager
             TestExamples = testRows.Count
         };
 
-        var json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions
-        {
-            WriteIndented = true
-        });
-
-        File.WriteAllText(_metricsPath, json);
+        _metricsStore.Save(snapshot);
     }
 }
