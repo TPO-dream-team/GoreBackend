@@ -7,6 +7,7 @@ using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Xml.Linq;
 using static src.Controllers.BoardController;
 
 namespace src.Controllers;
@@ -407,43 +408,35 @@ public class UserController : ControllerBase
             return NotFound(new { message = $"User with ID {id} not found." });
         }
 
-        // Fetch Scans
         var scans = await _context.Scans
             .AsNoTracking()
             .Where(s => s.UserId == id)
+            .Select(s => new ScansDTO(s.Id, s.UserId, s.MountainId, s.Timestamp, s.Mountain.Name))
             .ToListAsync();
 
-        // Get unique Mountain IDs from the user's scans to return mountain details
-        var mountainIds = scans.Select(s => s.MountainId).Distinct().ToList();
-        var mountains = await _context.Mountains
-            .AsNoTracking()
-            .Where(m => mountainIds.Contains(m.Id))
-            .ToListAsync();
-
-        // Fetch Boards (Active and Expired for profile history)
         var boards = await _context.Boards
             .AsNoTracking()
             .Where(b => b.UserId == id)
+            .Select(b => new BoardDTO(b.Id, b.UserId, b.MountainId, b.Description, b.TourTime, b.Difficulty, b.Mountain.Name))
             .ToListAsync();
 
         var profile = new UserProfileDto
         (
             new UserInfo(user.Id, user.Username),
-            mountains,
             scans,
             boards
            );
-
+      
         return Ok(profile);
     }
 
     public record UserInfo(Guid Id, string Username);
-
+    public record ScansDTO(int Id, Guid UserId, Guid MountainId, DateTime Timestamp, string MountainName);
+    public record BoardDTO(Guid Id, Guid UserId, Guid MountainId, string Description, int TourTime, int Difficulty, string MountainName);
     public record UserProfileDto(
         UserInfo User,
-        IEnumerable<Mountain> Mountains,
-        IEnumerable<Scan> Scans,
-        IEnumerable<Board> Boards
+        IEnumerable<ScansDTO> Scans,
+        IEnumerable<BoardDTO> Boards
     );
 
     public record LoginUser(string Username, string Password);
