@@ -384,6 +384,68 @@ public class UserController : ControllerBase
         }
     }
 
+
+    /// <summary>
+    /// Retrieves full profile information for a specific user.
+    /// </summary>
+    /// <param name="id">The unique GUID of the user.</param>
+    /// <response code="200">Returns the full user profile.</response>
+    /// <response code="404">If the user ID does not exist.</response>
+    [HttpGet("{id:guid}/profile")]
+    [ProducesResponseType(typeof(UserProfileDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<UserProfileDto>> GetProfile(Guid id)
+    {
+        var user = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == id)
+            .Select(u => new { u.Id, u.Username })
+            .FirstOrDefaultAsync();
+
+        if (user == null)
+        {
+            return NotFound(new { message = $"User with ID {id} not found." });
+        }
+
+        // Fetch Scans
+        var scans = await _context.Scans
+            .AsNoTracking()
+            .Where(s => s.UserId == id)
+            .ToListAsync();
+
+        // Get unique Mountain IDs from the user's scans to return mountain details
+        var mountainIds = scans.Select(s => s.MountainId).Distinct().ToList();
+        var mountains = await _context.Mountains
+            .AsNoTracking()
+            .Where(m => mountainIds.Contains(m.Id))
+            .ToListAsync();
+
+        // Fetch Boards (Active and Expired for profile history)
+        var boards = await _context.Boards
+            .AsNoTracking()
+            .Where(b => b.UserId == id)
+            .ToListAsync();
+
+        var profile = new UserProfileDto
+        (
+            new UserInfo(user.Id, user.Username),
+            mountains,
+            scans,
+            boards
+           );
+
+        return Ok(profile);
+    }
+
+    public record UserInfo(Guid Id, string Username);
+
+    public record UserProfileDto(
+        UserInfo User,
+        IEnumerable<Mountain> Mountains,
+        IEnumerable<Scan> Scans,
+        IEnumerable<Board> Boards
+    );
+
     public record LoginUser(string Username, string Password);
     public record ScanRequest(string NFC, double Lon, double Lat);
     public record RegisterUser(string Username, string Password, string RepeatPassword);
