@@ -165,7 +165,7 @@ namespace tests
         {
             var request = new UserController.RegisterUser("", "pass", "pass");
             var result = _controller.Register(request);
-            AssertBadRequest(result, "All elements required.");
+            AssertBadRequest(result, "Please fill out the whole form.");
         }
 
         [Fact]
@@ -173,7 +173,7 @@ namespace tests
         {
             var request = new UserController.RegisterUser("user", "", "pass");
             var result = _controller.Register(request);
-            AssertBadRequest(result, "All elements required.");
+            AssertBadRequest(result, "Please fill out the whole form.");
         }
 
         [Fact]
@@ -181,7 +181,7 @@ namespace tests
         {
             var request = new UserController.RegisterUser("user", "pass", "");
             var result = _controller.Register(request);
-            AssertBadRequest(result, "All elements required.");
+            AssertBadRequest(result, "Please fill out the whole form.");
         }
 
         [Fact]
@@ -196,7 +196,7 @@ namespace tests
             var result = _controller.Register(request);
 
             // Assert
-            AssertBadRequest(result, "Username already exists.");
+            AssertBadRequest(result, "This username already exists.");
         }
 
         [Fact]
@@ -204,7 +204,7 @@ namespace tests
         {
             var request = new UserController.RegisterUser("user", "pass1", "pass2");
             var result = _controller.Register(request);
-            AssertBadRequest(result, "Passwords don't match.");
+            AssertBadRequest(result, "Passwords do not match.");
         }
 
         // ---------------------- Login Tests ----------------------
@@ -237,7 +237,7 @@ namespace tests
         {
             var request = new UserController.LoginUser("", "pass");
             var result = _controller.Login(request);
-            AssertBadRequest(result, "Username and password required.");
+            AssertBadRequest(result, "Please fill out the whole form.");
         }
 
         [Fact]
@@ -245,7 +245,7 @@ namespace tests
         {
             var request = new UserController.LoginUser("user", "");
             var result = _controller.Login(request);
-            AssertBadRequest(result, "Username and password required.");
+            AssertBadRequest(result, "Please fill out the whole form.");
         }
 
         [Fact]
@@ -554,16 +554,31 @@ namespace tests
         }
 
         // ---------------------- Helper Assertions ----------------------
+        private static string ExtractMessage(object? value)
+        {
+            if (value == null) return string.Empty;
+            if (value is string s) return s;
+            // Extract message from object
+            var json = JsonSerializer.Serialize(value);
+            var root = JsonSerializer.Deserialize<JsonElement>(json);
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("message",out var message))
+            {
+                return message.GetString() ?? string.Empty;
+            }
+            return value.ToString() ?? string.Empty;
+        }
+
+
         private void AssertBadRequest(IActionResult result, string expectedMessage)
         {
             var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.Equal(expectedMessage, badRequest.Value);
+            Assert.Equal(expectedMessage, ExtractMessage(badRequest.Value));
         }
 
         private void AssertUnauthorized(IActionResult result, string expectedMessage)
         {
             var unauthorized = Assert.IsType<UnauthorizedObjectResult>(result);
-            Assert.Equal(expectedMessage, unauthorized.Value);
+            Assert.Equal(expectedMessage, ExtractMessage(unauthorized.Value));
         }
     }
 }
