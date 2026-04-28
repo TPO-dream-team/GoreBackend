@@ -8,6 +8,7 @@ using src.Controllers;
 using src.Models;
 using System.Linq.Expressions;
 using System.Security.Claims;
+using System.Text.Json;
 using Xunit;
 using static src.Controllers.BoardController;
 
@@ -171,14 +172,14 @@ namespace tests
         {
             // Arrange
             SetAuthenticatedUser(Guid.NewGuid().ToString());
-            var request = new BoardDTO(DateOnly.MaxValue, 1, 1, "", Guid.NewGuid());
+            var request = new BoardDTO(DateOnly.MaxValue, 1, 1, "Valid Description", Guid.NewGuid());
 
             // Act
             var result = await _controller.MakeBoard(request);
 
             // Assert
             var notFound = Assert.IsType<NotFoundObjectResult>(result);
-            Assert.Equal("The specified mountain was not found in our database.", notFound.Value);
+            Assert.Equal("Select mountain from the list.", ExtractMessage(notFound.Value));
         }
 
         
@@ -381,7 +382,24 @@ namespace tests
 
             // Assert
             var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.Equal("Message is required.", badRequest.Value);
+            Assert.Equal("Write the comment first.", ExtractMessage(badRequest.Value));
+        }
+
+        // Helper to extract message from BadRequestObjectResult
+        private static string ExtractMessage(object? value)
+        {
+            if (value is null) return string.Empty;
+            if (value is string s) return s;
+
+            var json = JsonSerializer.Serialize(value);
+            var root = JsonSerializer.Deserialize<JsonElement>(json);
+
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("message", out var message))
+            {
+                return message.GetString() ?? string.Empty;
+            }
+
+            return value.ToString() ?? string.Empty;
         }
     }
 }
