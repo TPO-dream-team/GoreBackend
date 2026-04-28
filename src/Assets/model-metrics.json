@@ -1,0 +1,9 @@
+{
+  "TrainingRun": 0,
+  "Precision": 89.04,
+  "Recall": 80.58,
+  "F1Score": 84.6,
+  "TrainedAtUtc": "2026-04-28T13:33:19.7179881Z",
+  "TrainingExamples": 0,
+  "TestExamples": 0
+}

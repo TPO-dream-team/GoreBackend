@@ -276,9 +276,6 @@ public class UserController : ControllerBase
     }
 
 
-    //TODO: Preveri latitude in longitude
-    //TODO: Preveri če je v 24h že poslav
-
     /// <summary>
     /// Records a new mountain scan via an NFC tag identifier.
     /// </summary>
@@ -300,42 +297,61 @@ public class UserController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<int>> NewScan([FromBody] ScanRequest request)
+    public async Task<ActionResult<ScanResponse>> NewScan([FromBody] ScanRequest request)
     {
-        try
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
+            return Unauthorized();
+
+        var mountain = await _context.Mountains
+            .FirstOrDefaultAsync(m => m.Nfc == request.NFC);
+        _logger.LogInformation(request.NFC);
+        if (mountain == null)
+            return NotFound("NFC tag not recognised.");
+
+        double distance = calculateDistance(request.Lat, request.Lon, (double)mountain.Lat, (double)mountain.Lon);
+        if (distance > double.Parse(_config.GetSection("ScanKmLimit").Value))
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
-            {
-                return Unauthorized("User ID not found in token.");
-            }
-
-            var mountainId = await _context.Mountains
-                .Where(m => m.Nfc == request.NFC)
-                .Select(m => m.Id)
-                .FirstOrDefaultAsync();
-
-            if (mountainId == Guid.Empty)
-            {
-                return NotFound("No mountain found associated with this NFC tag.");
-            }
-
-            var newScan = new Scan
-            {
-                UserId = userId,
-                MountainId = mountainId,
-            };
-
-            _context.Scans.Add(newScan);
-            await _context.SaveChangesAsync();
-
-            return Ok(new ScanResponse("Scan recorded successfully", newScan.Id));
+            _logger.LogInformation(distance.ToString());
+            return BadRequest("You are not on a known mountain."); 
         }
-        catch (Exception ex)
+        var last24Hours = DateTime.SpecifyKind(DateTime.UtcNow.AddHours(-24), DateTimeKind.Unspecified);
+        var alreadyScanned = await _context.Scans
+            .AnyAsync(s => s.UserId == userId &&
+                           s.MountainId == mountain.Id &&
+                           s.Timestamp >= last24Hours);
+
+        if (alreadyScanned)
         {
-            _logger.LogError(ex, "Error processing scan for NFC: {NFC}", request.NFC);
-            return BadRequest("An error occurred while recording your scan.");
+            return BadRequest("You have already scanned this mountain.");
         }
+
+        var newScan = new Scan
+        {
+            UserId = userId,
+            MountainId = mountain.Id
+        };
+
+        _context.Scans.Add(newScan);
+        await _context.SaveChangesAsync();
+
+        return Ok(new ScanResponse("NFC tag was scanned successfully.", newScan.Id));
+    }
+
+    private double calculateDistance(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double R = 6371.0; // Radius of the Earth in kilometers
+
+        // Convert degrees to radians
+        double dLat = (lat2 - lat1) * (Math.PI / 180.0);
+        double dLon = (lon2 - lon1) * (Math.PI / 180.0);
+
+        double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                   Math.Cos(lat1 * (Math.PI / 180.0)) * Math.Cos(lat2 * (Math.PI / 180.0)) * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+
+        double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+
+        return R * c; // Returns distance in kilometers
     }
 
 

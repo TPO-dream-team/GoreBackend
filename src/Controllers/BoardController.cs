@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using src.AI;
 using src.Models;
 using System.Security.Claims;
 
@@ -13,7 +14,8 @@ public class BoardController : ControllerBase
     private readonly ILogger<BoardController> _logger;
     private readonly GoreDBContext _context;
     private readonly IConfiguration _config;
-    public BoardController(ILogger<BoardController> logger, IConfiguration config, GoreDBContext context)
+    private IModelManager _modelManager;
+    public BoardController(ILogger<BoardController> logger, IConfiguration config, GoreDBContext context, IModelManager modelManager)
     {
         _logger = logger;
         _config = config;
@@ -109,6 +111,15 @@ public class BoardController : ControllerBase
             if (!mountainExists)
             {
                 return NotFound(new { message = "Select mountain from the list." });
+            }
+
+            if (_config.GetValue<bool>("useSpamFilter", false))
+            {
+                var output = _modelManager.Predict(request.Description);
+                if (output.IsSpam)
+                {
+                    return BadRequest("The description you wrote includes inappropriate context.");
+                }
             }
 
             Board b = new Board()
@@ -232,6 +243,15 @@ public class BoardController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(request.Message))
             return BadRequest( new { message = "Write the comment first." });
+
+        if (_config.GetValue<bool>("useSpamFilter", false))
+        {
+            var output = _modelManager.Predict(request.Message);
+            if (output.IsSpam)
+            {
+                return BadRequest("The comment you wrote includes inappropriate context.");
+            }
+        }
 
         var chat = new BoardChat
         {

@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using src.AI;
 using src.Models;
 using System.Security.Claims;
 
@@ -14,14 +15,16 @@ public class PostController : ControllerBase
     private readonly ILogger<PostController> _logger;
     private readonly IConfiguration _config;
     private GoreDBContext _context;
+    private IModelManager _modelManager;
 
-    public PostController(ILogger<PostController> logger, IConfiguration config, GoreDBContext context)
+
+    public PostController(ILogger<PostController> logger, IConfiguration config, GoreDBContext context, IModelManager modelManager)
     {
         _logger = logger;
         _config = config;
         _context = context;
+        _modelManager = modelManager;
     }
-
 
     /// <summary>
     /// Retrieves a paginated list of all posts, ordered by the most recent.
@@ -191,6 +194,15 @@ public class PostController : ControllerBase
                     return NotFound("The specified mountain was not found in our database.");
             }
 
+            if (_config.GetValue<bool>("useSpamFilter", false))
+            {
+                var output = _modelManager.Predict(request.StartMsg);
+                if (output.IsSpam)
+                {
+                    return BadRequest("The post you wrote includes inappropriate context.");
+                }
+            }
+
             var newPost = new Post
             {
                 CreatedBy = userId,
@@ -252,6 +264,15 @@ public class PostController : ControllerBase
             var postExists = _context.Posts.Any(p => p.Id == id);
             if (!postExists)
                 return NotFound("The post you are trying to comment on does not exist.");
+
+            if (_config.GetValue<bool>("useSpamFilter", false))
+            {
+                var output = _modelManager.Predict(request.Message);
+                if (output.IsSpam)
+                {
+                    return BadRequest("The comment you wrote includes inappropriate context.");
+                }
+            }
 
             var newComment = new PostComment
             {
