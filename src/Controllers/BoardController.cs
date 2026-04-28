@@ -20,6 +20,7 @@ public class BoardController : ControllerBase
         _logger = logger;
         _config = config;
         _context = context;
+        _modelManager = modelManager;
     }
 
     /// <summary>
