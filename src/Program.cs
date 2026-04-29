@@ -7,16 +7,14 @@ using Scalar.AspNetCore;
 using src.AI;
 using src.Models;
 using System.Text;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-
 builder.Services.AddDbContext<GoreDBContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
 
 builder.Services.Configure<ModelStorageOptions>(
     builder.Configuration.GetSection(ModelStorageOptions.SectionName));
@@ -26,14 +24,32 @@ var modelPath = Path.IsPathRooted(modelPathConfigured)
     ? modelPathConfigured
     : Path.Combine(builder.Environment.ContentRootPath, modelPathConfigured);
 
+var modelDirectory = Path.GetDirectoryName(modelPath);
+if (!string.IsNullOrEmpty(modelDirectory))
+{
+    Directory.CreateDirectory(modelDirectory);
+}
+
 builder.Services.AddPredictionEnginePool<ModelInput, ModelOutput>()
-    .FromFile(modelName: "ClassifierModel", filePath: modelPath, watchForChanges: true); //Brez watch for changes (brez tega se ne bo online posodablov)
+    .FromFile(modelName: "ClassifierModel", filePath: modelPath, watchForChanges: true);
 
 builder.Services.AddSingleton<IModelMetricsStore, JsonModelMetricsStore>();
-builder.Services.AddSingleton<IModelManager, ModelManager>();
+
+builder.Services.AddSingleton<IModelManager>(sp =>
+{
+    var pool = sp.GetRequiredService<PredictionEnginePool<ModelInput, ModelOutput>>();
+    var metricsStore = sp.GetRequiredService<IModelMetricsStore>();
+    var options = sp.GetRequiredService<IOptions<ModelStorageOptions>>().Value;
+
+    var path = Path.IsPathRooted(options.ModelPath)
+        ? options.ModelPath
+        : Path.Combine(builder.Environment.ContentRootPath, options.ModelPath);
+
+    return new ModelManager(pool, metricsStore, path, options.RequiredTotalRows);
+});
 
 var jwtSettings = builder.Configuration.GetSection("Jwt");
-var key = Encoding.UTF8.GetBytes(jwtSettings["Key"]);
+var key = Encoding.UTF8.GetBytes(jwtSettings["Key"] ?? "FallbackSecretKeyThatIsAtLeast32CharsLong");
 
 builder.Services.AddAuthentication(options =>
 {
@@ -64,16 +80,14 @@ builder.Services.AddOpenApi(options =>
         document.Info.Title = "Gore API specification";
         document.Info.Version = "v1.0";
 
-        // Simple Bearer token scheme (paste token here)
         document.Components.SecuritySchemes["Bearer"] = new OpenApiSecurityScheme
         {
             Type = SecuritySchemeType.Http,
             Scheme = "bearer",
-            BearerFormat = "JWT", // optional, just for UI hint
+            BearerFormat = "JWT",
             Description = "Paste your access token here (without 'Bearer ')"
         };
 
-        // Apply globally
         document.Security = new List<OpenApiSecurityRequirement>
         {
             new OpenApiSecurityRequirement
@@ -85,28 +99,23 @@ builder.Services.AddOpenApi(options =>
             }
         };
 
-        document.SetReferenceHostDocument();
-
         return Task.CompletedTask;
     });
 });
 
 builder.Services.AddEndpointsApiExplorer();
-
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowEveryone",
-        policy =>
-        {
-            policy.AllowAnyOrigin() // Fugly ampak ok za testing
-                  .AllowAnyHeader()
-                  .AllowAnyMethod();
-        });
+    options.AddPolicy("AllowEveryone", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
 });
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -119,6 +128,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("AllowEveryone");
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();

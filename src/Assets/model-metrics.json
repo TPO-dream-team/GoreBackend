@@ -1,9 +1,9 @@
 {
-  "TrainingRun": 0,
-  "Precision": 89.04,
-  "Recall": 80.58,
-  "F1Score": 84.6,
-  "TrainedAtUtc": "2026-04-28T13:33:19.7179881Z",
-  "TrainingExamples": 0,
-  "TestExamples": 0
+  "TrainingRun": 2,
+  "Precision": 1,
+  "Recall": 1,
+  "F1Score": 1,
+  "TrainedAtUtc": "2026-04-29T08:49:09.8445139Z",
+  "TrainingExamples": 90,
+  "TestExamples": 10
 }

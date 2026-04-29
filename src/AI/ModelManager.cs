@@ -45,6 +45,12 @@ public interface IModelManager
     ModelMetricsSnapshot GetMetrics();
 }
 
+public interface IModelMetricsStore
+{
+    ModelMetricsSnapshot Get();
+    void Save(ModelMetricsSnapshot snapshot);
+}
+
 public class ModelMetricsSnapshot
 {
     public int TrainingRun { get; set; }
@@ -58,7 +64,7 @@ public class ModelMetricsSnapshot
 
 public class ModelManager : IModelManager
 {
-    private const int RequiredTotalRows = 100;
+    private readonly int _requiredTotalRows;
 
     private readonly MLContext _mlContext;
     private readonly PredictionEnginePool<ModelInput, ModelOutput> _modelPool;
@@ -66,142 +72,132 @@ public class ModelManager : IModelManager
     private readonly string _modelPath;
     private readonly object _sync = new();
 
-    private ITransformer _model;
     private readonly List<ModelInput> _pendingBuffer = new();
 
     public ModelManager(
         PredictionEnginePool<ModelInput, ModelOutput> modelPool,
         IModelMetricsStore metricsStore,
-        IOptions<ModelStorageOptions> storageOptions,
-        IHostEnvironment hostEnvironment)
+        string modelPath,
+        int requiredTotalRows)
     {
         _mlContext = new MLContext(seed: 0);
         _modelPool = modelPool;
         _metricsStore = metricsStore;
-
-        var configuredModelPath = storageOptions.Value.ModelPath;
-        _modelPath = Path.IsPathRooted(configuredModelPath)
-            ? configuredModelPath
-            : Path.Combine(hostEnvironment.ContentRootPath, configuredModelPath);
-
-        var modelDirectory = Path.GetDirectoryName(_modelPath);
-        if (!string.IsNullOrWhiteSpace(modelDirectory))
-        {
-            Directory.CreateDirectory(modelDirectory);
-        }
-
-        if (File.Exists(_modelPath))
-            _model = _mlContext.Model.Load(_modelPath, out _);
+        _modelPath = modelPath;
+        _requiredTotalRows = requiredTotalRows;
     }
 
     public ModelOutput Predict(string input)
     {
+        // Guard against missing model file
+        if (!File.Exists(_modelPath))
+        {
+            return new ModelOutput { IsSpam = false, ConfidencePercentage = 0 };
+        }
+
         var result = _modelPool.Predict(modelName: "ClassifierModel", new ModelInput { Message = input });
 
-        float actualConfidence = result.IsSpam
-        ? result.Probability
-        : (1.0f - result.Probability);
-
-        result.ConfidencePercentage = actualConfidence;
+        // Logic extracted for clarity and testing
+        result.ConfidencePercentage = CalculateConfidence(result.IsSpam, result.Probability);
 
         return result;
     }
 
+    public float CalculateConfidence(bool isSpam, float probability)
+        => isSpam ? probability : (1.0f - probability);
+
     public string Refit(IEnumerable<ModelInput> newData)
     {
-        if (newData is null)
-        {
-            return "data added to retrain batch 0";
-        }
+        if (newData == null) return $"Batch size: {_pendingBuffer.Count}";
 
         var cleanedBatch = newData
-            .Where(x => x is not null && !string.IsNullOrWhiteSpace(x.Message))
+            .Where(x => x != null && !string.IsNullOrWhiteSpace(x.Message))
             .ToList();
 
-        if (cleanedBatch.Count == 0)
-        {
-            return $"data added to retrain batch {_pendingBuffer.Count}";
-        }
+        List<ModelInput>? dataToTrain = null;
 
         lock (_sync)
         {
             _pendingBuffer.AddRange(cleanedBatch);
 
-            bool shouldRetrain = _pendingBuffer.Count >= RequiredTotalRows;
-
-            if (!shouldRetrain)
+            if (_pendingBuffer.Count >= _requiredTotalRows)
             {
-                return $"Data added to retrain batch. #data: {_pendingBuffer.Count}";
+                dataToTrain = new List<ModelInput>(_pendingBuffer);
+                _pendingBuffer.Clear();
+            }
+        }
+
+        if (dataToTrain != null)
+        {
+            if (TrainAndSaveModel(dataToTrain))
+                return "Model successfully retrained.";
+            else
+                return "Model didn't retrain successfully.";
+        }
+
+        return $"Data added to batch. Total: {_pendingBuffer.Count}";
+    }
+
+
+    private bool TrainAndSaveModel(List<ModelInput> allRows) 
+    {
+        try
+        {
+            var (trainRows, testRows) = PrepareData(allRows);
+
+            if (!trainRows.Any()) return false;
+
+            IDataView trainDataView = _mlContext.Data.LoadFromEnumerable(trainRows);
+
+            var pipeline = _mlContext.Transforms.Text.FeaturizeText("Features", nameof(ModelInput.Message))
+                .Append(_mlContext.BinaryClassification.Trainers.SdcaLogisticRegression());
+
+            ITransformer trainedModel = pipeline.Fit(trainDataView);
+
+            var tempPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+            _mlContext.Model.Save(trainedModel, trainDataView.Schema, tempPath);
+            File.Move(tempPath, _modelPath, overwrite: true);
+
+            bool hasPositiveTest = testRows.Any(x => x.IsSpam);
+            bool hasNegativeTest = testRows.Any(x => !x.IsSpam);
+
+            if (hasPositiveTest && hasNegativeTest)
+            {
+                var testDataView = _mlContext.Data.LoadFromEnumerable(testRows);
+                var predictions = trainedModel.Transform(testDataView);
+                var metrics = _mlContext.BinaryClassification.Evaluate(predictions);
+
+                _metricsStore.Save(new ModelMetricsSnapshot
+                {
+                    TrainingRun = _metricsStore.Get().TrainingRun + 1,
+                    Precision = metrics.PositivePrecision,
+                    Recall = metrics.PositiveRecall,
+                    F1Score = metrics.F1Score,
+                    TrainedAtUtc = DateTime.UtcNow,
+                    TrainingExamples = trainRows.Count,
+                    TestExamples = testRows.Count
+                });
+            }
+            else
+            {
+                return false;
             }
 
-            TrainAndSaveModel();
-            _pendingBuffer.Clear();
-            return "Model successfully retrained.";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            return false;
         }
     }
 
-    public ModelMetricsSnapshot GetMetrics()
+    public (List<ModelInput> train, List<ModelInput> test) PrepareData(List<ModelInput> data)
     {
-        return _metricsStore.Get();
+        var shuffled = data.OrderBy(_ => Random.Shared.Next()).ToList();
+        int testCount = (int)(shuffled.Count * 0.1);
+
+        return (shuffled.Skip(testCount).ToList(), shuffled.Take(testCount).ToList());
     }
 
-    private void TrainAndSaveModel()
-    {
-        var previousMetrics = GetMetrics();
-
-        var allRows = _pendingBuffer
-            .OrderBy(_ => Random.Shared.Next())
-            .ToList();
-
-        var positives = allRows.Where(x => x.IsSpam).OrderBy(_ => Random.Shared.Next()).ToList();
-        var negatives = allRows.Where(x => !x.IsSpam).OrderBy(_ => Random.Shared.Next()).ToList();
-
-        int positiveTestCount = positives.Count > 0
-            ? Math.Clamp((int)Math.Round(positives.Count * 0.1, MidpointRounding.AwayFromZero), 1, positives.Count)
-            : 0;
-
-        int negativeTestCount = negatives.Count > 0
-            ? Math.Clamp((int)Math.Round(negatives.Count * 0.1, MidpointRounding.AwayFromZero), 1, negatives.Count)
-            : 0;
-
-        var testRows = positives.Take(positiveTestCount)
-            .Concat(negatives.Take(negativeTestCount))
-            .OrderBy(_ => Random.Shared.Next())
-            .ToList();
-
-        var trainRows = positives.Skip(positiveTestCount)
-            .Concat(negatives.Skip(negativeTestCount))
-            .OrderBy(_ => Random.Shared.Next())
-            .ToList();
-
-        if (trainRows.Count == 0 || testRows.Count == 0)
-        {
-            return;
-        }
-
-        IDataView trainDataView = _mlContext.Data.LoadFromEnumerable(trainRows);
-
-        var pipeline = _mlContext.Transforms.Text.FeaturizeText("Features", nameof(ModelInput.Message))
-            .Append(_mlContext.BinaryClassification.Trainers.SdcaLogisticRegression());
-
-        _model = pipeline.Fit(trainDataView);
-        _mlContext.Model.Save(_model, trainDataView.Schema, _modelPath);
-
-        IDataView testDataView = _mlContext.Data.LoadFromEnumerable(testRows);
-        var predictions = _model.Transform(testDataView);
-        var metrics = _mlContext.BinaryClassification.Evaluate(predictions);
-
-        var snapshot = new ModelMetricsSnapshot
-        {
-            TrainingRun = previousMetrics.TrainingRun + 1,
-            Precision = metrics.PositivePrecision,
-            Recall = metrics.PositiveRecall,
-            F1Score = metrics.F1Score,
-            TrainedAtUtc = DateTime.UtcNow,
-            TrainingExamples = trainRows.Count,
-            TestExamples = testRows.Count
-        };
-
-        _metricsStore.Save(snapshot);
-    }
+    public ModelMetricsSnapshot GetMetrics() => _metricsStore.Get();
 }
