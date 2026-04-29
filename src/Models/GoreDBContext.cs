@@ -14,38 +14,41 @@ public partial class GoreDBContext : DbContext
     }
 
     public virtual DbSet<Board> Boards { get; set; }
-
     public virtual DbSet<BoardChat> BoardChats { get; set; }
-
     public virtual DbSet<Mountain> Mountains { get; set; }
-
     public virtual DbSet<Post> Posts { get; set; }
-
     public virtual DbSet<PostComment> PostComments { get; set; }
-
     public virtual DbSet<Scan> Scans { get; set; }
-
     public virtual DbSet<User> Users { get; set; }
+    public virtual DbSet<Message> Messages { get; set; } // Added for the new MESSAGE table
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasPostgresExtension("uuid-ossp");
 
+        modelBuilder.Entity<Message>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("message_pkey");
+            entity.ToTable("message");
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.Content).IsRequired().HasColumnName("content");
+            entity.Property(e => e.IsSpamConf).HasColumnName("is_spam_conf");
+            entity.Property(e => e.IsSpam).HasColumnName("is_spam");
+        });
+
         modelBuilder.Entity<Board>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("board_pkey");
-
             entity.ToTable("board");
 
-            entity.Property(e => e.Id)
-                .HasDefaultValueSql("uuid_generate_v4()")
-                .HasColumnName("id");
-            entity.Property(e => e.Description).HasColumnName("description");
+            entity.Property(e => e.Id).HasDefaultValueSql("uuid_generate_v4()").HasColumnName("id");
             entity.Property(e => e.Difficulty).HasColumnName("difficulty");
             entity.Property(e => e.ExpiryDate).HasColumnName("expiry_date");
             entity.Property(e => e.MountainId).HasColumnName("mountain_id");
             entity.Property(e => e.TourTime).HasColumnName("tour_time");
             entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.MessageId).HasColumnName("message_id");
 
             entity.HasOne(d => d.Mountain).WithMany(p => p.Boards)
                 .HasForeignKey(d => d.MountainId)
@@ -54,20 +57,21 @@ public partial class GoreDBContext : DbContext
             entity.HasOne(d => d.User).WithMany(p => p.Boards)
                 .HasForeignKey(d => d.UserId)
                 .HasConstraintName("fk_board_user");
+
+            entity.HasOne(d => d.Message).WithMany()
+                .HasForeignKey(d => d.MessageId)
+                .HasConstraintName("fk_board_message");
         });
 
         modelBuilder.Entity<BoardChat>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("board_chat_pkey");
-
             entity.ToTable("board_chat");
 
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.BoardId).HasColumnName("board_id");
-            entity.Property(e => e.Msg).HasColumnName("msg");
-            entity.Property(e => e.Timestamp)
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("timestamp");
+            entity.Property(e => e.MessageId).HasColumnName("message_id");
+            entity.Property(e => e.Timestamp).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnName("timestamp");
             entity.Property(e => e.UserId).HasColumnName("user_id");
 
             entity.HasOne(d => d.Board).WithMany(p => p.BoardChats)
@@ -78,70 +82,37 @@ public partial class GoreDBContext : DbContext
                 .HasForeignKey(d => d.UserId)
                 .HasConstraintName("fk_boardchat_user");
 
-            entity.Property(e => e.IsSpam)
-                .HasColumnName("isspam")
-                .HasDefaultValue(false);
-
-            entity.Property(e => e.IsSpamConfidence)
-                .HasColumnName("isspamconfidence")
-                .HasDefaultValue(1.0);
-
-            entity.Property(e => e.WasVerified)
-                .HasColumnName("wasverified")
-                .HasDefaultValue(false);
+            entity.HasOne(d => d.Message).WithMany()
+                .HasForeignKey(d => d.MessageId)
+                .HasConstraintName("fk_boardchat_message");
         });
 
         modelBuilder.Entity<Mountain>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("mountain_pkey");
-
             entity.ToTable("mountain");
-
             entity.HasIndex(e => e.Nfc, "mountain_nfc_key").IsUnique();
 
-            entity.Property(e => e.Id)
-                .HasDefaultValueSql("uuid_generate_v4()")
-                .HasColumnName("id");
+            entity.Property(e => e.Id).HasDefaultValueSql("uuid_generate_v4()").HasColumnName("id");
             entity.Property(e => e.Height).HasColumnName("height");
-            entity.Property(e => e.Name)
-                .IsRequired()
-                .HasMaxLength(50)
-                .HasColumnName("name");
-            entity.Property(e => e.Nfc)
-                .HasMaxLength(50)
-                .HasColumnName("nfc");
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(50).HasColumnName("name");
+            entity.Property(e => e.Nfc).HasMaxLength(50).HasColumnName("nfc");
             entity.Property(e => e.RegionId).HasColumnName("region_id");
-
-            entity.Property(e => e.Lat)
-            .HasColumnName("lat")
-            .HasColumnType("double precision")
-            .IsRequired();
-
-            entity.Property(e => e.Lon)
-                .HasColumnName("lon")
-                .HasColumnType("double precision")
-                .IsRequired();
+            entity.Property(e => e.Lat).HasPrecision(9, 6).HasColumnName("lat");
+            entity.Property(e => e.Lon).HasPrecision(9, 6).HasColumnName("lon");
         });
 
         modelBuilder.Entity<Post>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("post_pkey");
-
             entity.ToTable("post");
 
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.CreatedBy).HasColumnName("created_by");
             entity.Property(e => e.MountainId).HasColumnName("mountain_id");
-            entity.Property(e => e.StartMsg)
-                .IsRequired()
-                .HasColumnName("start_msg");
-            entity.Property(e => e.Tagline)
-                .IsRequired()
-                .HasMaxLength(250)
-                .HasColumnName("tagline");
-            entity.Property(e => e.Timestamp)
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("timestamp");
+            entity.Property(e => e.MessageId).HasColumnName("message_id");
+            entity.Property(e => e.Tagline).IsRequired().HasMaxLength(250).HasColumnName("tagline");
+            entity.Property(e => e.Timestamp).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnName("timestamp");
 
             entity.HasOne(d => d.CreatedByNavigation).WithMany(p => p.Posts)
                 .HasForeignKey(d => d.CreatedBy)
@@ -151,23 +122,22 @@ public partial class GoreDBContext : DbContext
                 .HasForeignKey(d => d.MountainId)
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("fk_post_mountain");
+
+            entity.HasOne(d => d.Message).WithMany()
+                .HasForeignKey(d => d.MessageId)
+                .HasConstraintName("fk_post_message");
         });
 
         modelBuilder.Entity<PostComment>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("post_comment_pkey");
-
             entity.ToTable("post_comment");
 
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.CreatedBy).HasColumnName("created_by");
-            entity.Property(e => e.Message)
-                .IsRequired()
-                .HasColumnName("message");
+            entity.Property(e => e.MessageId).HasColumnName("message_id");
             entity.Property(e => e.PostId).HasColumnName("post_id");
-            entity.Property(e => e.Timestamp)
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("timestamp");
+            entity.Property(e => e.Timestamp).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnName("timestamp");
 
             entity.HasOne(d => d.CreatedByNavigation).WithMany(p => p.PostComments)
                 .HasForeignKey(d => d.CreatedBy)
@@ -176,31 +146,20 @@ public partial class GoreDBContext : DbContext
             entity.HasOne(d => d.Post).WithMany(p => p.PostComments)
                 .HasForeignKey(d => d.PostId)
                 .HasConstraintName("fk_comment_post");
-            
-            entity.Property(e => e.IsSpam)
-                .HasColumnName("isspam")
-                .HasDefaultValue(false);
 
-            entity.Property(e => e.IsSpamConfidence)
-                .HasColumnName("isspamconfidence")
-                .HasDefaultValue(1.0);
-
-            entity.Property(e => e.WasVerified)
-                .HasColumnName("wasverified")
-                .HasDefaultValue(false);
+            entity.HasOne(d => d.Message).WithMany()
+                .HasForeignKey(d => d.MessageId)
+                .HasConstraintName("fk_comment_message");
         });
 
         modelBuilder.Entity<Scan>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("scan_pkey");
-
             entity.ToTable("scan");
 
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.MountainId).HasColumnName("mountain_id");
-            entity.Property(e => e.Timestamp)
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("timestamp");
+            entity.Property(e => e.Timestamp).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnName("timestamp");
             entity.Property(e => e.UserId).HasColumnName("user_id");
 
             entity.HasOne(d => d.Mountain).WithMany(p => p.Scans)
@@ -214,25 +173,13 @@ public partial class GoreDBContext : DbContext
 
         modelBuilder.Entity<User>(entity =>
         {
-            entity.HasKey(e => e.Id).HasName("USER_pkey");
-
+            entity.HasKey(e => e.Id).HasName("users_pkey");
             entity.ToTable("users");
 
-            entity.Property(e => e.Id)
-                .HasDefaultValueSql("uuid_generate_v4()")
-                .HasColumnName("id");
-            entity.Property(e => e.PasswordHash)
-                .IsRequired()
-                .HasMaxLength(50)
-                .HasColumnName("password_hash");
-            entity.Property(e => e.Role)
-                .IsRequired()
-                .HasMaxLength(20)
-                .HasColumnName("role");
-            entity.Property(e => e.Username)
-                .IsRequired()
-                .HasMaxLength(50)
-                .HasColumnName("username");
+            entity.Property(e => e.Id).HasDefaultValueSql("uuid_generate_v4()").HasColumnName("id");
+            entity.Property(e => e.PasswordHash).IsRequired().HasMaxLength(60).IsFixedLength().HasColumnName("password_hash");
+            entity.Property(e => e.Role).IsRequired().HasMaxLength(20).HasColumnName("role");
+            entity.Property(e => e.Username).IsRequired().HasMaxLength(50).HasColumnName("username");
         });
 
         OnModelCreatingPartial(modelBuilder);

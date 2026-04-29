@@ -2,6 +2,7 @@
 using src.Models;
 using System.ComponentModel.DataAnnotations;
 using src.AI;
+using Microsoft.EntityFrameworkCore;
 
 namespace src.Controllers;
 
@@ -11,66 +12,105 @@ public class ModeratorController : ControllerBase
 {
     private readonly ILogger<BoardController> _logger;
     private readonly GoreDBContext _context;
-    private readonly IConfiguration _config;
     private readonly IModelManager _modelManager;
 
     public ModeratorController(ILogger<BoardController> logger, IConfiguration config, GoreDBContext context, IModelManager modelManager)
     {
         _logger = logger;
-        _config = config;
         _modelManager = modelManager;
         _context = context;
     }
 
     /// <summary>
-    /// Submits a manual classification for a message to be used as AI training data.
+    /// Manually labels a message, sets confidence to 1.0, and adds it to the AI retraining buffer.
     /// </summary>
-    /// <param name="messageId">The unique ID of the message.</param>
-    /// <param name="isSpam">True if the message is spam, false otherwise.</param>
-    /// <response code="200">Label submitted successfully.</response>
-    /// <response code="404">Message ID not found.</response>
+    /// <param name="messageId">The database ID of the message to label.</param>
+    /// <param name="isSpam">The manual classification (true for Spam, false for Ham).</param>
+    /// <response code="200">Message updated and sent to the model retraining pipeline.</response>
+    /// <response code="404">Message not found in the database.</response>
     [HttpPost("train")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> SubmitTrainingData([FromQuery] int messageId, [FromQuery] bool isSpam)
     {
-        // TODO: Update your _context with the manual label
-        // var msg = await _context.Messages.FindAsync(messageId);
-        // if (msg == null) return NotFound();
+        var msg = await _context.Messages.FindAsync(messageId);
 
-        return Ok(new { Message = $"Message {messageId} marked as {(isSpam ? "Spam" : "Ham")} for training." });
-    }
-
-    /// <summary>
-    /// Retrieves messages where the AI confidence is low and requires human moderation.
-    /// </summary>
-    /// <returns>A list of messages with low-confidence scores.</returns>
-    /// <response code="200">Returns the list of ambiguous messages.</response>
-    [HttpGet("ambiguous-messages")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetAmbiguousMessages()
-    {
-        // Placeholder for logic that fetches messages where (0.4 < AI_Score < 0.6)
-        var hardMessages = new[]
+        if (msg == null)
         {
-            new { Id = 101, Content = "Is this a promotional link or just a reference?" },
-            new { Id = 102, Content = "Click here to see the results of the study." }
+            return NotFound(new { Message = $"Message with ID {messageId} not found." });
+        }
+
+        msg.IsSpam = isSpam;
+        msg.IsSpamConf = 1.0;
+
+        await _context.SaveChangesAsync();
+
+        var trainingItem = new ModelInput
+        {
+            Message = msg.Content,
+            IsSpam = isSpam
         };
 
-        return Ok(hardMessages);
+        string refitStatus = _modelManager.Refit(new List<ModelInput> { trainingItem });
+
+        return Ok(new
+        {
+            Message = $"Message {messageId} marked as {(isSpam ? "Spam" : "Ham")}.",
+            RefitStatus = refitStatus
+        });
     }
 
     /// <summary>
-    /// Returns the current performance metrics (F1, Recall, Precision) for the spam filter.
+    /// Retrieves the message with the lowest AI confidence score for manual review.
     /// </summary>
-    /// <returns>Metrics for both Spam and Non-Spam classifications.</returns>
-    /// <response code="200">Returns the classification report.</response>
+    /// <remarks>
+    /// Targets messages where the confidence score is furthest from absolute certainty (0 or 1).
+    /// </remarks>
+    /// <returns>The single most ambiguous message currently in the system.</returns>
+    /// <response code="200">Returns the ambiguous message data.</response>
+    /// <response code="404">No messages with active filter scores found.</response>
+    [HttpGet("ambiguous")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAmbiguousMessage()
+    {
+        try
+        {
+            AmbiguousMessageDto? ambiguousMessage = await _context.Messages
+                .Where(m => (double)m.IsSpamConf < 0.95)
+                .OrderBy(m => (double)m.IsSpamConf)
+                .Select(m => new AmbiguousMessageDto(
+                    m.Id,
+                    m.Content,
+                    m.IsSpamConf,
+                    m.IsSpam
+                ))
+                .FirstOrDefaultAsync();
+
+            if (ambiguousMessage == null)
+                return NotFound("No messages found with active spam filter scores.");
+
+            return Ok(ambiguousMessage);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching the most ambiguous message.");
+            return StatusCode(500, "Internal server error");
+        }
+    }
+
+    /// <summary>
+    /// Retrieves current AI model performance statistics.
+    /// </summary>
+    /// <returns>A report containing Accuracy, F1-Score, and other relevant metrics.</returns>
+    /// <response code="200">Returns the model performance report.</response>
     [HttpGet("metrics")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult GetModelMetrics()
     {
-        var metrics = _modelManager.GetMetrics();        
+        var metrics = _modelManager.GetMetrics();
 
         return Ok(metrics);
     }
+
+    public record AmbiguousMessageDto(int Id, string Content, double Confidence, bool? IsSpam);
 }

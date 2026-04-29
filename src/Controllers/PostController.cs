@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using src.AI;
 using src.Models;
 using System.Security.Claims;
@@ -9,14 +10,12 @@ namespace src.Controllers;
 [Authorize]
 [ApiController]
 [Route("post")]
-
 public class PostController : ControllerBase
 {
     private readonly ILogger<PostController> _logger;
     private readonly IConfiguration _config;
     private GoreDBContext _context;
     private IModelManager _modelManager;
-
 
     public PostController(ILogger<PostController> logger, IConfiguration config, GoreDBContext context, IModelManager modelManager)
     {
@@ -27,14 +26,14 @@ public class PostController : ControllerBase
     }
 
     /// <summary>
-    /// Retrieves a paginated list of all posts, ordered by the most recent.
+    /// Retrieves a paginated list of all posts that are not flagged as spam.
     /// </summary>
-    /// <param name="offset">The number of items to skip (default: 0).</param>
-    /// <param name="limit">The maximum number of items to return (default: 100).</param>
-    /// <returns>A collection of posts with author and mountain details.</returns>
-    /// <response code="200">Returns the requested page of posts.</response>
-    /// <response code="400">If offset is negative or limit is zero/negative.</response>
-    /// <response code="500">If there is an internal server error.</response>
+    /// <param name="offset">The number of posts to skip.</param>
+    /// <param name="limit">The maximum number of posts to return.</param>
+    /// <returns>A list of posts.</returns>
+    /// <response code="200">Returns the list of posts.</response>
+    /// <response code="400">Invalid pagination parameters.</response>
+    /// <response code="500">Internal server error.</response>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<PostListDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -46,6 +45,7 @@ public class PostController : ControllerBase
         try
         {
             var posts = _context.Posts
+                .Where(p => p.Message.IsSpam != true)
                 .OrderByDescending(p => p.Timestamp)
                 .Skip(offset)
                 .Take(limit)
@@ -54,9 +54,9 @@ public class PostController : ControllerBase
                     p.Id,
                     p.Tagline,
                     p.CreatedByNavigation.Username,
-                    p.Mountain.Name,
+                    p.Mountain != null ? p.Mountain.Name : null,
                     p.PostComments.Count,
-                    p.StartMsg,
+                    p.Message.Content,
                     p.Timestamp
                 ))
                 .ToList();
@@ -71,16 +71,15 @@ public class PostController : ControllerBase
     }
 
     /// <summary>
-    /// Retrieves a single post by its ID.
+    /// Retrieves a specific post by its unique ID.
     /// </summary>
-    /// <param name="id">The unique identifier of the post.</param>
-    /// <returns>Detailed information about the post.</returns>
-    /// <response code="200">Returns the post details.</response>
-    /// <response code="404">If the post is not found.</response>
+    /// <param name="id">The post ID.</param>
+    /// <returns>The requested post details.</returns>
+    /// <response code="200">Returns the requested post.</response>
+    /// <response code="404">Post not found.</response>
     [HttpGet("{id:int}")]
     [ProducesResponseType(typeof(PostListDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public IActionResult GetPostById(int id)
     {
         try
@@ -94,7 +93,7 @@ public class PostController : ControllerBase
                     p.CreatedByNavigation.Username,
                     p.Mountain != null ? p.Mountain.Name : null,
                     p.PostComments.Count,
-                    p.StartMsg,
+                    p.Message.Content,
                     p.Timestamp
                 ))
                 .FirstOrDefault();
@@ -112,35 +111,31 @@ public class PostController : ControllerBase
     }
 
     /// <summary>
-    /// Retrieves all comments associated with a specific post.
+    /// Retrieves all comments for a specific post, excluding those flagged as spam.
     /// </summary>
-    /// <param name="id">The unique identifier of the post.</param>
-    /// <returns>A list of comments for the specified post.</returns>
+    /// <param name="id">The post ID.</param>
+    /// <returns>A list of comments for the post.</returns>
     /// <response code="200">Returns the list of comments.</response>
-    /// <response code="404">If a post with the specified ID does not exist.</response>
-    /// <response code="500">If an unexpected error occurs on the server.</response>
+    /// <response code="404">Post not found.</response>
     [HttpGet("{id:int}/comments")]
     [ProducesResponseType(typeof(IEnumerable<CommentDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public IActionResult AllComments(int id)
     {
         try
         {
             var postExists = _context.Posts.Any(p => p.Id == id);
             if (!postExists)
-            {
                 return NotFound($"Post with ID {id} not found.");
-            }
 
             var comments = _context.PostComments
-                .Where(c => c.PostId == id)
+                .Where(c => c.PostId == id && c.Message.IsSpam != true)
                 .OrderBy(c => c.Timestamp)
                 .Select(c => new CommentDto
                 (
                     c.Id,
                     c.CreatedBy,
-                    c.Message,
+                    c.Message.Content,
                     c.CreatedByNavigation.Username,
                     c.Timestamp
                 ))
@@ -156,26 +151,18 @@ public class PostController : ControllerBase
     }
 
     /// <summary>
-    /// Creates a new mountain summit post for the authenticated user.
+    /// Creates a new post. Content is processed by the AI spam filter.
     /// </summary>
-    /// <param name="request">The post details including tagline, message, and optional mountain ID.</param>
-    /// <returns>The ID of the newly created post.</returns>
-    /// <remarks>
-    /// Requires a valid JWT bearer token. 
-    /// If a MountainId is provided, it must exist in the database.
-    /// </remarks>
+    /// <param name="request">Post details including tagline and message.</param>
+    /// <returns>The created post response.</returns>
     /// <response code="201">Post created successfully.</response>
-    /// <response code="400">If required fields are missing or invalid.</response>
-    /// <response code="401">If the user is not authenticated or the token is invalid.</response>
-    /// <response code="404">If the specified mountain does not exist.</response>
-    /// <response code="500">If a database error occurs.</response>
+    /// <response code="400">Missing fields or message flagged as spam.</response>
+    /// <response code="404">Specified mountain not found.</response>
     [Authorize]
     [HttpPost("new")]
     [ProducesResponseType(typeof(PostCreationResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public IActionResult CreatePost([FromBody] CreatePostRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Tagline) || string.IsNullOrWhiteSpace(request.StartMsg))
@@ -184,72 +171,69 @@ public class PostController : ControllerBase
         try
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out Guid userId))
+            if (!Guid.TryParse(userIdString, out Guid userId))
                 return Unauthorized("Invalid user identity in token.");
 
-            if (request.MountainId != null)
-            {
-                var mountainExists = _context.Mountains.Any(m => m.Id == request.MountainId);
-                if (!mountainExists)
-                    return NotFound("The specified mountain was not found in our database.");
-            }
+            if (request.MountainId != null && !_context.Mountains.Any(m => m.Id == request.MountainId))
+                return NotFound("The specified mountain was not found.");
+
+            bool? isSpam = null;
+            ModelOutput output = _modelManager.Predict(request.StartMsg);
+            double confidence = (double)(output.ConfidencePercentage);
 
             if (_config.GetValue<bool>("useSpamFilter", false))
             {
-                var output = _modelManager.Predict(request.StartMsg);
-                if (output.IsSpam)
-                {
-                    return BadRequest("The post you wrote includes inappropriate context.");
-                }
+                isSpam = output.IsSpam;
             }
+
+            var message = new Message
+            {
+                Content = request.StartMsg,
+                IsSpam = isSpam,
+                IsSpamConf = confidence,
+            };
+
+            _context.Messages.Add(message);
+            _context.SaveChanges();
 
             var newPost = new Post
             {
                 CreatedBy = userId,
                 Tagline = request.Tagline,
-                StartMsg = request.StartMsg,
+                MessageId = message.Id,
                 MountainId = request.MountainId
             };
 
             _context.Posts.Add(newPost);
             _context.SaveChanges();
 
-            var response = new PostCreationResponse
-            (
-               "Summit post created!",
-               newPost.Id
-            );
+            if (output.IsSpam)
+            {
+                return BadRequest("The comment includes inappropriate context.");
+            }
 
-            return CreatedAtAction(nameof(AllPosts), new { id = newPost.Id }, response);
+            return CreatedAtAction(nameof(GetPostById), new { id = newPost.Id }, new PostCreationResponse("Summit post created!", newPost.Id));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating post for user {UserId}", User.FindFirstValue(ClaimTypes.NameIdentifier));
+            _logger.LogError(ex, "Error creating post");
             return StatusCode(500, "An error occurred while saving your post.");
         }
     }
 
     /// <summary>
-    /// Adds a new comment to a specific mountain post.
+    /// Adds a comment to an existing post. Content is processed by the AI spam filter.
     /// </summary>
-    /// <param name="id">The ID of the post being commented on.</param>
-    /// <param name="request">The comment content.</param>
-    /// <returns>A 201 Created status if successful.</returns>
-    /// <remarks>
-    /// User must be authenticated. The message field is required and cannot be empty.
-    /// </remarks>
-    /// <response code="201">Comment successfully added.</response>
-    /// <response code="400">If the message is null or empty.</response>
-    /// <response code="401">If the user is not authenticated.</response>
-    /// <response code="404">If the post ID provided does not exist.</response>
-    /// <response code="500">If there was a server-side error saving the comment.</response>
+    /// <param name="id">The post ID.</param>
+    /// <param name="request">The comment message content.</param>
+    /// <response code="201">Comment added successfully.</response>
+    /// <response code="400">Empty message or content flagged as spam.</response>
+    /// <response code="404">Post not found.</response>
     [Authorize]
     [HttpPost("{id}/comments/")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public IActionResult AddComment(int id, [FromBody] CreateCommentRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Message))
@@ -258,31 +242,45 @@ public class PostController : ControllerBase
         try
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out Guid userId))
+            if (!Guid.TryParse(userIdString, out Guid userId))
                 return Unauthorized("User ID not found in token.");
 
-            var postExists = _context.Posts.Any(p => p.Id == id);
-            if (!postExists)
-                return NotFound("The post you are trying to comment on does not exist.");
+            if (!_context.Posts.Any(p => p.Id == id))
+                return NotFound("The post does not exist.");
+
+            bool? isSpam = null;
+            var output = _modelManager.Predict(request.Message);
+            double confidence = (double)(output.ConfidencePercentage);
 
             if (_config.GetValue<bool>("useSpamFilter", false))
             {
-                var output = _modelManager.Predict(request.Message);
-                if (output.IsSpam)
-                {
-                    return BadRequest("The comment you wrote includes inappropriate context.");
-                }
+                isSpam = output.IsSpam;
             }
+
+            var messageEntry = new Message
+            {
+                Content = request.Message,
+                IsSpam = isSpam,
+                IsSpamConf = confidence,
+            };
+
+            _context.Messages.Add(messageEntry);
+            _context.SaveChanges();
 
             var newComment = new PostComment
             {
                 PostId = id,
                 CreatedBy = userId,
-                Message = request.Message
+                MessageId = messageEntry.Id
             };
 
             _context.PostComments.Add(newComment);
             _context.SaveChanges();
+
+            if (output.IsSpam)
+            {
+                return BadRequest("The comment includes inappropriate context.");
+            }
 
             return Created();
         }
@@ -295,10 +293,7 @@ public class PostController : ControllerBase
 
     public record CreateCommentRequest(string Message);
     public record CreatePostRequest(string Tagline, string StartMsg, Guid? MountainId);
-
     public record PostListDto(int Id, string Tagline, string Username, string MountainName, int CommentCount, string StartMsg, DateTime TimeStamp);
-
     public record CommentDto(int Id, Guid CreatedBy, string Message, string Username, DateTime TimeStamp);
-
     public record PostCreationResponse(string Message, int PostId);
 }

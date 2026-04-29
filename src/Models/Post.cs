@@ -17,13 +17,15 @@ public partial class Post
 
     public string Tagline { get; set; }
 
-    public string StartMsg { get; set; }
+    public int MessageId { get; set; }
 
     public Guid? MountainId { get; set; }
 
     public virtual User CreatedByNavigation { get; set; }
 
     public virtual Mountain Mountain { get; set; }
+
+    public virtual Message Message { get; set; }
 
     public virtual ICollection<PostComment> PostComments { get; set; } = new List<PostComment>();
 }

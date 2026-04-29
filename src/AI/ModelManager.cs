@@ -185,7 +185,7 @@ public class ModelManager : IModelManager
 
             return true;
         }
-        catch (Exception ex)
+        catch
         {
             return false;
         }

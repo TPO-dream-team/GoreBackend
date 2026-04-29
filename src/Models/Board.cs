@@ -19,11 +19,13 @@ public partial class Board
 
     public int Difficulty { get; set; }
 
-    public string Description { get; set; }
+    public int MessageId { get; set; }
 
     public virtual ICollection<BoardChat> BoardChats { get; set; } = new List<BoardChat>();
 
     public virtual Mountain Mountain { get; set; }
 
     public virtual User User { get; set; }
+
+    public virtual Message Message { get; set; }
 }

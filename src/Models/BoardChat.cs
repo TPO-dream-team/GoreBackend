@@ -14,17 +14,14 @@ public partial class BoardChat
 
     public Guid BoardId { get; set; }
 
-    public string Msg { get; set; }
+    public int MessageId { get; set; }
 
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public DateTime Timestamp { get; set; }
-    public bool IsSpam { get; set; }
-
-    public double IsSpamConfidence { get; set; }
-
-    public bool WasVerified { get; set; }
 
     public virtual Board Board { get; set; }
 
     public virtual User User { get; set; }
+
+    public virtual Message Message { get; set; }
 }

@@ -14,17 +14,14 @@ public partial class PostComment
 
     public int PostId { get; set; }
 
+    public int MessageId { get; set; }
+
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public DateTime Timestamp { get; set; }
-
-    public string Message { get; set; }
-    public bool IsSpam { get; set; }
-
-    public double IsSpamConfidence { get; set; }
-
-    public bool WasVerified { get; set; }
 
     public virtual User CreatedByNavigation { get; set; }
 
     public virtual Post Post { get; set; }
+
+    public virtual Message Message { get; set; }
 }
