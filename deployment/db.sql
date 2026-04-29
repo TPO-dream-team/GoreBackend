@@ -2,10 +2,10 @@ DROP TABLE IF EXISTS POST_COMMENT CASCADE;
 DROP TABLE IF EXISTS POST CASCADE;
 DROP TABLE IF EXISTS BOARD_CHAT CASCADE;
 DROP TABLE IF EXISTS BOARD CASCADE;
+DROP TABLE IF EXISTS MESSAGE CASCADE;
 DROP TABLE IF EXISTS SCAN CASCADE;
 DROP TABLE IF EXISTS MOUNTAIN CASCADE;
 DROP TABLE IF EXISTS "users" CASCADE;
-
 
 -- Enable UUID generation if needed
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -13,7 +13,6 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ======================
 -- TABLE: "users"
 -- ======================
-
 CREATE TABLE "users" (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     username VARCHAR(50) NOT NULL,
@@ -22,19 +21,27 @@ CREATE TABLE "users" (
 );
 
 -- ======================
+-- TABLE: MESSAGE (Centralized text storage)
+-- ======================
+CREATE TABLE MESSAGE (
+    id SERIAL PRIMARY KEY,
+    content TEXT NOT NULL,
+    is_spam_conf DECIMAL(9,6) NOT NULL,
+    is_spam BOOLEAN -- NULL/TRUE/FALSE
+);
+
+-- ======================
 -- TABLE: MOUNTAIN
 -- ======================
-
 CREATE TABLE MOUNTAIN (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(50) NOT NULL,
     height INT NOT NULL,
     region_id INT NOT NULL,
-	lat DECIMAL(9,6) NOT NULL,
-	lon DECIMAL(9,6) NOT NULL,
+    lat DECIMAL(9,6) NOT NULL,
+    lon DECIMAL(9,6) NOT NULL,
     NFC VARCHAR(50) UNIQUE
 );
-
 
 -- ======================
 -- TABLE: SCAN
@@ -66,8 +73,8 @@ CREATE TABLE BOARD (
     mountain_id UUID NOT NULL,
     tour_time INT NOT NULL,
     difficulty INT NOT NULL,
-    description TEXT NOT NULL,
-
+    message_id INT NOT NULL, 
+	
     CONSTRAINT fk_board_user
         FOREIGN KEY (user_id)
         REFERENCES "users"(id)
@@ -76,6 +83,11 @@ CREATE TABLE BOARD (
     CONSTRAINT fk_board_mountain
         FOREIGN KEY (mountain_id)
         REFERENCES MOUNTAIN(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_board_message
+        FOREIGN KEY (message_id)
+        REFERENCES MESSAGE(id)
         ON DELETE CASCADE
 );
 
@@ -86,11 +98,8 @@ CREATE TABLE BOARD_CHAT (
     id SERIAL PRIMARY KEY,
     user_id UUID NOT NULL,
     board_id UUID NOT NULL,
-    msg TEXT,
+    message_id INT NOT NULL, -- Pointing to MESSAGE table
     "timestamp" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	isSpam BOOL NOT NULL default FALSE,
-	isSpamConfidence double precision NOT NULL default  1.,
-	wasVerified BOOL NOT NULL default  FALSE,
 
     CONSTRAINT fk_boardchat_user
         FOREIGN KEY (user_id)
@@ -100,6 +109,11 @@ CREATE TABLE BOARD_CHAT (
     CONSTRAINT fk_boardchat_board
         FOREIGN KEY (board_id)
         REFERENCES BOARD(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_boardchat_message
+        FOREIGN KEY (message_id)
+        REFERENCES MESSAGE(id)
         ON DELETE CASCADE
 );
 
@@ -111,7 +125,7 @@ CREATE TABLE POST (
     created_by UUID NOT NULL,
     "timestamp" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     tagline VARCHAR(250) NOT NULL,
-    start_msg TEXT NOT NULL,
+    message_id INT NOT NULL,
     mountain_id UUID,
 
     CONSTRAINT fk_post_user
@@ -122,7 +136,12 @@ CREATE TABLE POST (
     CONSTRAINT fk_post_mountain
         FOREIGN KEY (mountain_id)
         REFERENCES MOUNTAIN(id)
-        ON DELETE SET NULL
+        ON DELETE SET NULL,
+
+    CONSTRAINT fk_post_message
+        FOREIGN KEY (message_id)
+        REFERENCES MESSAGE(id)
+        ON DELETE CASCADE
 );
 
 -- ======================
@@ -132,11 +151,8 @@ CREATE TABLE POST_COMMENT (
     id SERIAL PRIMARY KEY,
     created_by UUID NOT NULL,
     post_id INT NOT NULL,
+    message_id INT NOT NULL, -- Pointing to MESSAGE table
     "timestamp" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    message TEXT NOT NULL,
-	isSpam BOOL NOT NULL default  FALSE,
-	isSpamConfidence double precision NOT NULL default  1.,
-	wasVerified BOOL NOT NULL default  FALSE,
 
     CONSTRAINT fk_comment_user
         FOREIGN KEY (created_by)
@@ -146,10 +162,17 @@ CREATE TABLE POST_COMMENT (
     CONSTRAINT fk_comment_post
         FOREIGN KEY (post_id)
         REFERENCES POST(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_comment_message
+        FOREIGN KEY (message_id)
+        REFERENCES MESSAGE(id)
         ON DELETE CASCADE
 );
 
-INSERT INTO "users" (id, username, password_hash, role ) VALUES ('7a1268fd-484f-4719-8ec2-58b8c8f494f7', 'admin', '$2a$11$FKH5edK1umKbi9v.qFCc6O4zpZ/Dd.KKeMceegHjlfYVAw0TeoQfm', 'admin');
+-- Seed Data
+INSERT INTO "users" (id, username, password_hash, role ) 
+VALUES ('7a1268fd-484f-4719-8ec2-58b8c8f494f7', 'admin', '$2a$11$FKH5edK1umKbi9v.qFCc6O4zpZ/Dd.KKeMceegHjlfYVAw0TeoQfm', 'admin');
 
 INSERT INTO MOUNTAIN (id,name, height, region_id, Lat, Lon, NFC) VALUES
 ('ecfe2ce3-468e-46a4-aa9e-54a1456f4e56', 'Triglav', 2864, 1, 46.378300, 13.836700, '4539123412345678'),
