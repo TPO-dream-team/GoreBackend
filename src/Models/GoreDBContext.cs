@@ -159,7 +159,7 @@ public partial class GoreDBContext : DbContext
 
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.MountainId).HasColumnName("mountain_id");
-            entity.Property(e => e.Timestamp).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnName("timestamp");
+            entity.Property(e => e.Timestamp).HasDefaultValueSql("CURRENT_TIMESTAMP").ValueGeneratedOnAdd().HasColumnName("timestamp");
             entity.Property(e => e.UserId).HasColumnName("user_id");
 
             entity.HasOne(d => d.Mountain).WithMany(p => p.Scans)

@@ -12,9 +12,9 @@ using Microsoft.Extensions.Options;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
+
 builder.Services.AddDbContext<GoreDBContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
-
 
 builder.Services.Configure<ModelStorageOptions>(
     builder.Configuration.GetSection(ModelStorageOptions.SectionName));
@@ -33,11 +33,13 @@ if (!string.IsNullOrEmpty(modelDirectory))
 builder.Services.AddPredictionEnginePool<ModelInput, ModelOutput>()
     .FromFile(modelName: "ClassifierModel", filePath: modelPath, watchForChanges: true);
 
+builder.Services.AddSingleton<IPredictionService, PredictionService>();
+
 builder.Services.AddSingleton<IModelMetricsStore, JsonModelMetricsStore>();
 
 builder.Services.AddSingleton<IModelManager>(sp =>
 {
-    var pool = sp.GetRequiredService<PredictionEnginePool<ModelInput, ModelOutput>>();
+    var predictionService = sp.GetRequiredService<IPredictionService>();
     var metricsStore = sp.GetRequiredService<IModelMetricsStore>();
     var options = sp.GetRequiredService<IOptions<ModelStorageOptions>>().Value;
 
@@ -45,7 +47,7 @@ builder.Services.AddSingleton<IModelManager>(sp =>
         ? options.ModelPath
         : Path.Combine(builder.Environment.ContentRootPath, options.ModelPath);
 
-    return new ModelManager(pool, metricsStore, path, options.RequiredTotalRows);
+    return new ModelManager(predictionService, metricsStore, path, options.RequiredTotalRows);
 });
 
 var jwtSettings = builder.Configuration.GetSection("Jwt");
@@ -104,6 +106,7 @@ builder.Services.AddOpenApi(options =>
 });
 
 builder.Services.AddEndpointsApiExplorer();
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowEveryone", policy =>
@@ -116,6 +119,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// --- Middleware Pipeline ---
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();

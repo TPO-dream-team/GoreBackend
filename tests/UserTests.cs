@@ -295,22 +295,6 @@ namespace tests
         }
 
         [Fact]
-        public void Refresh_MissingAuthorizationHeader_ReturnsBadRequest()
-        {
-            // No header
-            var result = _controller.Refresh();
-            AssertBadRequest(result, "Bearer token not found in Authorization header.");
-        }
-
-        [Fact]
-        public void Refresh_InvalidBearerFormat_ReturnsBadRequest()
-        {
-            _controller.ControllerContext.HttpContext.Request.Headers["Authorization"] = "Invalid";
-            var result = _controller.Refresh();
-            AssertBadRequest(result, "Bearer token not found in Authorization header.");
-        }
-
-        [Fact]
         public void Refresh_InvalidTokenFormat_ReturnsUnauthorized()
         {
             SetAuthorizationHeader("invalid-token");

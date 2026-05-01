@@ -11,31 +11,32 @@ public class ModelInput
     public bool IsSpam { get; set; }
 
     [LoadColumn(0)]
-    public string Message { get; set; }
+    public string Message { get; set; } = string.Empty;
 }
 
 public class ModelOutput
 {
     [ColumnName("PredictedLabel")]
     public bool IsSpam { get; set; }
-
-    // This is the raw score (log-odds)
     public float Score { get; set; }
-
-    // This is the calibrated probability (0.0 to 1.0)
     public float Probability { get; set; }
-
-    // Kako je confident v svoj prediction (to se bo shranilo v db)
     public float ConfidencePercentage { get; set; }
 }
 
-public class MetricsRow
+public class ModelMetricsSnapshot
 {
-    [ColumnName("Label")]
-    public bool Label { get; set; }
+    public int TrainingRun { get; set; }
+    public double Precision { get; set; }
+    public double Recall { get; set; }
+    public double F1Score { get; set; }
+    public DateTime TrainedAtUtc { get; set; }
+    public int TrainingExamples { get; set; }
+    public int TestExamples { get; set; }
+}
 
-    [ColumnName("PredictedLabel")]
-    public bool PredictedLabel { get; set; }
+public interface IPredictionService
+{
+    ModelOutput Predict(ModelInput input);
 }
 
 public interface IModelManager
@@ -51,37 +52,39 @@ public interface IModelMetricsStore
     void Save(ModelMetricsSnapshot snapshot);
 }
 
-public class ModelMetricsSnapshot
+public class PredictionService : IPredictionService
 {
-    public int TrainingRun { get; set; }
-    public double Precision { get; set; }
-    public double Recall { get; set; }
-    public double F1Score { get; set; }
-    public DateTime TrainedAtUtc { get; set; }
-    public int TrainingExamples { get; set; }
-    public int TestExamples { get; set; }
+    private readonly PredictionEnginePool<ModelInput, ModelOutput> _modelPool;
+
+    public PredictionService(PredictionEnginePool<ModelInput, ModelOutput> modelPool)
+    {
+        _modelPool = modelPool;
+    }
+
+    public ModelOutput Predict(ModelInput input)
+    {
+        return _modelPool.Predict(modelName: "ClassifierModel", input);
+    }
 }
 
 public class ModelManager : IModelManager
 {
     private readonly int _requiredTotalRows;
-
     private readonly MLContext _mlContext;
-    private readonly PredictionEnginePool<ModelInput, ModelOutput> _modelPool;
+    private readonly IPredictionService _predictionService;
     private readonly IModelMetricsStore _metricsStore;
     private readonly string _modelPath;
     private readonly object _sync = new();
-
     private readonly List<ModelInput> _pendingBuffer = new();
 
     public ModelManager(
-        PredictionEnginePool<ModelInput, ModelOutput> modelPool,
+        IPredictionService predictionService,
         IModelMetricsStore metricsStore,
         string modelPath,
         int requiredTotalRows)
     {
         _mlContext = new MLContext(seed: 0);
-        _modelPool = modelPool;
+        _predictionService = predictionService;
         _metricsStore = metricsStore;
         _modelPath = modelPath;
         _requiredTotalRows = requiredTotalRows;
@@ -89,15 +92,12 @@ public class ModelManager : IModelManager
 
     public ModelOutput Predict(string input)
     {
-        // Guard against missing model file
         if (!File.Exists(_modelPath))
         {
             return new ModelOutput { IsSpam = false, ConfidencePercentage = 0 };
         }
 
-        var result = _modelPool.Predict(modelName: "ClassifierModel", new ModelInput { Message = input });
-
-        // Logic extracted for clarity and testing
+        var result = _predictionService.Predict(new ModelInput { Message = input });
         result.ConfidencePercentage = CalculateConfidence(result.IsSpam, result.Probability);
 
         return result;
@@ -138,8 +138,7 @@ public class ModelManager : IModelManager
         return $"Data added to batch. Total: {_pendingBuffer.Count}";
     }
 
-
-    private bool TrainAndSaveModel(List<ModelInput> allRows) 
+    private bool TrainAndSaveModel(List<ModelInput> allRows)
     {
         try
         {

@@ -229,7 +229,7 @@ public class UserController : ControllerBase
         double distance = calculateDistance(request.Lat, request.Lon, (double)mountain.Lat, (double)mountain.Lon);
         if (distance > double.Parse(_config["ScanKmLimit"])) return BadRequest("You are not on a known mountain.");
 
-        var last24Hours = DateTime.SpecifyKind(DateTime.UtcNow.AddHours(-24), DateTimeKind.Unspecified);
+        var last24Hours = DateTime.UtcNow.AddDays(-1);
         if (await _context.Scans.AnyAsync(s => s.UserId == userId && s.MountainId == mountain.Id && s.Timestamp >= last24Hours))
             return BadRequest("You have already scanned this mountain.");
 

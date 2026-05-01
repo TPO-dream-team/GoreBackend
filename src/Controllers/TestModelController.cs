@@ -1,9 +1,11 @@
 ﻿#if DEBUG || STAGING
 using Microsoft.AspNetCore.Mvc;
 using src.AI;
+using System.Diagnostics.CodeAnalysis;
 
 namespace YourApp.Controllers;
 
+[ExcludeFromCodeCoverage]
 [ApiController]
 [Route("api/test/model")]
 public class TestModelController : ControllerBase

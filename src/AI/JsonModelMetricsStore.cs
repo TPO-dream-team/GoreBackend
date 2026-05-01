@@ -1,8 +1,10 @@
-using System.Text.Json;
 using Microsoft.Extensions.Options;
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
 
 namespace src.AI;
 
+[ExcludeFromCodeCoverage]
 public class JsonModelMetricsStore : IModelMetricsStore
 {
     private readonly string _metricsPath;
