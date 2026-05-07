@@ -8,6 +8,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using static src.Controllers.BoardController;
+using static src.Controllers.UserController;
 
 namespace src.Controllers;
 
@@ -309,7 +310,21 @@ public class UserController : ControllerBase
                 b.Mountain.Name))
             .ToListAsync();
 
-        return Ok(new UserProfileDto(new UserInfo(user.Id, user.Username), scans, boards));
+        var posts = await _context.Posts
+        .AsNoTracking()
+        .Where(p => p.CreatedBy == id)
+        .Select(p => new PostDTO(
+            p.Id,
+            p.Tagline,
+            p.CreatedByNavigation.Username,
+            p.CreatedBy,
+            p.Mountain.Name,
+            p.PostComments.Count(),
+            p.Message.Content,
+            p.Timestamp))
+        .ToListAsync();
+
+        return Ok(new UserProfileDto(new UserInfo(user.Id, user.Username), scans, boards, posts));
     }
 
     private double calculateDistance(double lat1, double lon1, double lat2, double lon2)
@@ -325,10 +340,22 @@ public class UserController : ControllerBase
     public record UserInfo(Guid Id, string Username);
     public record ScansDTO(int Id, Guid UserId, Guid MountainId, DateTime Timestamp, string MountainName);
     public record BoardDTO(Guid Id, Guid UserId, Guid MountainId, string Description, int TourTime, int Difficulty, string MountainName);
-    public record UserProfileDto(UserInfo User, IEnumerable<ScansDTO> Scans, IEnumerable<BoardDTO> Boards);
+    public record UserProfileDto(UserInfo User, IEnumerable<ScansDTO> Scans, IEnumerable<BoardDTO> Boards, IEnumerable<PostDTO> Posts);
     public record LoginUser(string Username, string Password);
     public record ScanRequest(string NFC, double Lon, double Lat);
     public record RegisterUser(string Username, string Password, string RepeatPassword);
     public record ScanResponse(string Message, int ScanId);
     public record UserScanDto(int Id, Guid UserId, Guid MountainId, DateTime Timestamp);
+
+    public record PostDTO(
+    int Id,
+    string Tagline,
+    string Username,
+    Guid UserId,
+    string MountainName,
+    int CommentCount,
+    string StartMsg,
+    DateTime TimeStamp);
+
+
 }
