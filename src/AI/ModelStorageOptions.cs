@@ -1,5 +1,8 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace src.AI;
 
+[ExcludeFromCodeCoverage]
 public class ModelStorageOptions
 {
     public const string SectionName = "ModelStorage";

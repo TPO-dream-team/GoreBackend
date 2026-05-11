@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="Code Coverage">
+        <Configuration>
+          <ExcludeByAttribute>
+            <!-- This matches your YAML ExcludeByAttribute -->
+            <AttributeProvider>System.CodeDom.Compiler.GeneratedCodeAttribute</AttributeProvider>
+            <!-- You can also add the one you used in Program.cs earlier -->
+            <AttributeProvider>System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute</AttributeProvider>
+          </ExcludeByAttribute>
+          
+          <!-- Optional: Exclude by Namespace as we discussed earlier -->
+          <CodeCoverage>
+            <Functions>
+              <Exclude>
+                <Function>^System\.Runtime\.CompilerServices\..*</Function>
+                <Function>^Microsoft\.AspNetCore\.OpenApi\.Generated\..*</Function>
+              </Exclude>
+            </Functions>
+          </CodeCoverage>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
