@@ -54,6 +54,7 @@ public class PostController : ControllerBase
                     p.Id,
                     p.Tagline,
                     p.CreatedByNavigation.Username,
+                    p.CreatedByNavigation.Id,
                     p.Mountain != null ? p.Mountain.Name : null,
                     p.PostComments.Count,
                     p.Message.Content,
@@ -91,6 +92,7 @@ public class PostController : ControllerBase
                     p.Id,
                     p.Tagline,
                     p.CreatedByNavigation.Username,
+                    p.CreatedByNavigation.Id,
                     p.Mountain != null ? p.Mountain.Name : null,
                     p.PostComments.Count,
                     p.Message.Content,
@@ -137,6 +139,7 @@ public class PostController : ControllerBase
                     c.CreatedBy,
                     c.Message.Content,
                     c.CreatedByNavigation.Username,
+                    c.CreatedByNavigation.Id,
                     c.Timestamp
                 ))
                 .ToList();
@@ -293,7 +296,7 @@ public class PostController : ControllerBase
 
     public record CreateCommentRequest(string Message);
     public record CreatePostRequest(string Tagline, string StartMsg, Guid? MountainId);
-    public record PostListDto(int Id, string Tagline, string Username, string MountainName, int CommentCount, string StartMsg, DateTime TimeStamp);
-    public record CommentDto(int Id, Guid CreatedBy, string Message, string Username, DateTime TimeStamp);
+    public record PostListDto(int Id, string Tagline, string Username, Guid UserId, string MountainName, int CommentCount, string StartMsg, DateTime TimeStamp);
+    public record CommentDto(int Id, Guid CreatedBy, string Message, string Username, Guid UserId, DateTime TimeStamp);
     public record PostCreationResponse(string Message, int PostId);
 }
