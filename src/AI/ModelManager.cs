@@ -70,6 +70,7 @@ public class PredictionService : IPredictionService
 public class ModelManager : IModelManager
 {
     private readonly int _requiredTotalRows;
+    private readonly double _testDataProcentage;
     private readonly MLContext _mlContext;
     private readonly IPredictionService _predictionService;
     private readonly IModelMetricsStore _metricsStore;
@@ -81,13 +82,15 @@ public class ModelManager : IModelManager
         IPredictionService predictionService,
         IModelMetricsStore metricsStore,
         string modelPath,
-        int requiredTotalRows)
+        int requiredTotalRows,
+        double testDataProcentage)
     {
         _mlContext = new MLContext(seed: 0);
         _predictionService = predictionService;
         _metricsStore = metricsStore;
         _modelPath = modelPath;
         _requiredTotalRows = requiredTotalRows;
+        _testDataProcentage = testDataProcentage;
     }
 
     public ModelOutput Predict(string input)
@@ -193,7 +196,7 @@ public class ModelManager : IModelManager
     public (List<ModelInput> train, List<ModelInput> test) PrepareData(List<ModelInput> data)
     {
         var shuffled = data.OrderBy(_ => Random.Shared.Next()).ToList();
-        int testCount = (int)(shuffled.Count * 0.1); // Uzame 10% kot test data
+        int testCount = (int)(shuffled.Count * _testDataProcentage);
 
         return (shuffled.Skip(testCount).ToList(), shuffled.Take(testCount).ToList());
     }

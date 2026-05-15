@@ -33,7 +33,7 @@ namespace tests
         {
             // Arrange
             if (File.Exists(_tempModelPath)) File.Delete(_tempModelPath);
-            var manager = new ModelManager(_predictionServiceMock.Object, _metricsStoreMock.Object, _tempModelPath, _requiredRows);
+            var manager = new ModelManager(_predictionServiceMock.Object, _metricsStoreMock.Object, _tempModelPath, _requiredRows, 0.1);
 
             // Act
             var result = manager.Predict("some text");
@@ -49,7 +49,7 @@ namespace tests
         {
             // Arrange
             File.WriteAllText(_tempModelPath, "dummy model content"); // Create dummy file
-            var manager = new ModelManager(_predictionServiceMock.Object, _metricsStoreMock.Object, _tempModelPath, _requiredRows);
+            var manager = new ModelManager(_predictionServiceMock.Object, _metricsStoreMock.Object, _tempModelPath, _requiredRows, 0.1);
 
             var expectedOutput = new ModelOutput { IsSpam = true, Probability = 0.7f };
             _predictionServiceMock.Setup(x => x.Predict(It.IsAny<ModelInput>())).Returns(expectedOutput);
@@ -69,7 +69,7 @@ namespace tests
         public void CalculateConfidence_ReturnsCorrectValue(bool isSpam, float probability, float expected)
         {
             // Arrange
-            var manager = new ModelManager(_predictionServiceMock.Object, _metricsStoreMock.Object, _tempModelPath, _requiredRows);
+            var manager = new ModelManager(_predictionServiceMock.Object, _metricsStoreMock.Object, _tempModelPath, _requiredRows, 0.1);
 
             // Act
             var actual = manager.CalculateConfidence(isSpam, probability);
@@ -82,7 +82,7 @@ namespace tests
         public void Refit_BuffersData_UntilThresholdReached()
         {
             // Arrange
-            var manager = new ModelManager(_predictionServiceMock.Object, _metricsStoreMock.Object, _tempModelPath, _requiredRows);
+            var manager = new ModelManager(_predictionServiceMock.Object, _metricsStoreMock.Object, _tempModelPath, _requiredRows, 0.1);
             var input = new List<ModelInput> { new ModelInput { Message = "Valid Message" } };
 
             // Act
@@ -98,7 +98,7 @@ namespace tests
         public void PrepareData_SplitsTenPercentToTest()
         {
             // Arrange
-            var manager = new ModelManager(_predictionServiceMock.Object, _metricsStoreMock.Object, _tempModelPath, _requiredRows);
+            var manager = new ModelManager(_predictionServiceMock.Object, _metricsStoreMock.Object, _tempModelPath, _requiredRows, 0.1);
             var data = Enumerable.Range(0, 100).Select(i => new ModelInput { Message = $"Msg {i}" }).ToList();
 
             // Act
@@ -115,7 +115,7 @@ namespace tests
             // Arrange
             var expected = new ModelMetricsSnapshot { F1Score = 0.88, TrainingRun = 5 };
             _metricsStoreMock.Setup(s => s.Get()).Returns(expected);
-            var manager = new ModelManager(_predictionServiceMock.Object, _metricsStoreMock.Object, _tempModelPath, _requiredRows);
+            var manager = new ModelManager(_predictionServiceMock.Object, _metricsStoreMock.Object, _tempModelPath, _requiredRows, 0.1);
 
             // Act
             var result = manager.GetMetrics();
@@ -129,7 +129,7 @@ namespace tests
         public void Refit_WithNull_ReturnsCurrentCount()
         {
             // Arrange
-            var manager = new ModelManager(_predictionServiceMock.Object, _metricsStoreMock.Object, _tempModelPath, _requiredRows);
+            var manager = new ModelManager(_predictionServiceMock.Object, _metricsStoreMock.Object, _tempModelPath, _requiredRows, 0.1);
 
             // Act
             var result = manager.Refit(null);

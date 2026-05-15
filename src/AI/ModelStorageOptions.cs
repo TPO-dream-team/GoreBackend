@@ -9,4 +9,5 @@ public class ModelStorageOptions
     public string ModelPath { get; set; } = "Assets/model.zip";
     public string MetricsPath { get; set; } = "Assets/model-metrics.json";
     public int RequiredTotalRows { get; set; } = 1000;
+    public double TestDataProcentage { get; set; } = 0.1;
 }

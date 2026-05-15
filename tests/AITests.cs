@@ -32,7 +32,7 @@ public class ModelManagerTrainingTests : IDisposable
     public void Refit_WhenDataIsNull_ReturnsCurrentBufferSize()
     {
         // Arrange: Start with a required row count of 10
-        var manager = new ModelManager(_mockPredictionService.Object, _mockMetricsStore.Object, _testModelPath, 10);
+        var manager = new ModelManager(_mockPredictionService.Object, _mockMetricsStore.Object, _testModelPath, 10, 0.1);
 
         // Act
         var result = manager.Refit(null!);
@@ -45,7 +45,7 @@ public class ModelManagerTrainingTests : IDisposable
     public void Refit_WhenThresholdNotMet_BuffersData()
     {
         // Arrange
-        var manager = new ModelManager(_mockPredictionService.Object, _mockMetricsStore.Object, _testModelPath, 10);
+        var manager = new ModelManager(_mockPredictionService.Object, _mockMetricsStore.Object, _testModelPath, 10, 0.1);
         var newData = new List<ModelInput> { new ModelInput { Message = "Test", IsSpam = true } };
 
         // Act
@@ -60,7 +60,7 @@ public class ModelManagerTrainingTests : IDisposable
     public void Refit_WhenTestDataIsImbalanced_ReturnsFailure()
     {
 
-        var manager = new ModelManager(_mockPredictionService.Object, _mockMetricsStore.Object, _testModelPath, 2);
+        var manager = new ModelManager(_mockPredictionService.Object, _mockMetricsStore.Object, _testModelPath, 2, 0.1);
         var unbalancedData = new List<ModelInput>
         {
             new ModelInput { Message = "Spam 1", IsSpam = true },
@@ -79,7 +79,7 @@ public class ModelManagerTrainingTests : IDisposable
     public void Refit_ThreadSafety_HandlesConcurrentUpdates()
     {
         // Arrange
-        var manager = new ModelManager(_mockPredictionService.Object, _mockMetricsStore.Object, _testModelPath, 100);
+        var manager = new ModelManager(_mockPredictionService.Object, _mockMetricsStore.Object, _testModelPath, 100, 0.1);
         var tasks = new List<Task>();
 
         for (int i = 0; i < 50; i++)

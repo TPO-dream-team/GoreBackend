@@ -47,7 +47,7 @@ builder.Services.AddSingleton<IModelManager>(sp =>
         ? options.ModelPath
         : Path.Combine(builder.Environment.ContentRootPath, options.ModelPath);
 
-    return new ModelManager(predictionService, metricsStore, path, options.RequiredTotalRows);
+    return new ModelManager(predictionService, metricsStore, path, options.RequiredTotalRows, options.TestDataProcentage);
 });
 
 var jwtSettings = builder.Configuration.GetSection("Jwt");
