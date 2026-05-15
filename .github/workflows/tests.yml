@@ -19,9 +19,9 @@ jobs:
     - name: Checkout Frontend Repo
       uses: actions/checkout@v4
       with:
-        repository: TPO-dream-team/GoreFrontend
-        path: GoreFrontend
-        ref: main
+        repository: TPO-dream-team/GoreUI # Fixed name
+        path: GoreFrontend                # Keeping folder name same for your scripts
+        ref: main                         # Frontend is on main
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
@@ -48,7 +48,6 @@ jobs:
       run: |
         dotnet test --no-build --configuration Release \
         --logger "trx;LogFileName=results.trx" \
-        --settings .runsettings \
         --collect:"XPlat Code Coverage" \
         --results-directory ./TestResults
 
@@ -63,11 +62,12 @@ jobs:
     - name: Write Results to Summary
       if: always()
       run: |
-        echo "## Code Coverage" >> $GITHUB_STEP_SUMMARY
-        cat code-coverage-results.md >> $GITHUB_STEP_SUMMARY
+        if [ -f code-coverage-results.md ]; then
+          echo "## Code Coverage" >> $GITHUB_STEP_SUMMARY
+          cat code-coverage-results.md >> $GITHUB_STEP_SUMMARY
+        fi
 
     # --- Playwright E2E Section ---
-
     - name: Install Frontend Dependencies
       run: npm ci
       working-directory: GoreFrontend
@@ -94,7 +94,6 @@ jobs:
         retention-days: 30
 
     # --- Final Status Check ---
-
     - name: Check Backend Test Status
       if: steps.test_step.outcome == 'failure'
       run: |
