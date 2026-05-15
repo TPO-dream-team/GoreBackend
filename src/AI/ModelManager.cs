@@ -193,7 +193,7 @@ public class ModelManager : IModelManager
     public (List<ModelInput> train, List<ModelInput> test) PrepareData(List<ModelInput> data)
     {
         var shuffled = data.OrderBy(_ => Random.Shared.Next()).ToList();
-        int testCount = (int)(shuffled.Count * 0.1);
+        int testCount = (int)(shuffled.Count * 0.1); // Uzame 10% kot test data
 
         return (shuffled.Skip(testCount).ToList(), shuffled.Take(testCount).ToList());
     }
