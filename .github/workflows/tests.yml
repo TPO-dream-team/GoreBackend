@@ -30,6 +30,7 @@ jobs:
       run: |
         dotnet test --no-build --configuration Release \
         --logger "trx;LogFileName=results.trx" \
+        --settings .runsettings \
         --collect:"XPlat Code Coverage" \
         --results-directory ./TestResults
 
